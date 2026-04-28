@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { Database } from '@/lib/database.types'
+import { enrollInCohortAction } from '@/lib/actions/enrollment.actions'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -39,8 +40,8 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Parallel fetches — course + modules+lessons + cohorts
-  const [courseResult, modulesResult, cohortsResult] = await Promise.all([
+  // Parallel fetches — course + modules+lessons + cohorts + user enrollments
+  const [courseResult, modulesResult, cohortsResult, enrollmentsResult] = await Promise.all([
     supabase
       .from('courses')
       .select('id, title, slug, description, thumbnail_url')
@@ -69,11 +70,20 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .select('id, title, starts_at, ends_at, max_seats, status')
       .eq('course_id', courseId)
       .order('starts_at', { ascending: true }),
+
+    supabase
+      .from('enrollments')
+      .select('cohort_id')
+      .eq('user_id', user.id),
   ])
 
   // Extract data with explicit types — Supabase discriminated union requires casts
   const modules: ModuleWithLessons[] = (modulesResult.data as ModuleWithLessons[] | null) ?? []
   const cohorts: CohortRow[] = (cohortsResult.data as CohortRow[] | null) ?? []
+  type EnrollmentCohortIdRow = { cohort_id: string }
+  const enrolledCohortIds = new Set<string>(
+    ((enrollmentsResult.data ?? []) as EnrollmentCohortIdRow[]).map((e) => e.cohort_id)
+  )
 
   // 404 if course not found or not published
   // Extract data before the guard so TypeScript can narrow it independently
@@ -192,10 +202,16 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         <p>{cohort.max_seats} seats available</p>
                       )}
                     </div>
-                    {/* Phase 2: button present, enrollment wired in Phase 3 */}
-                    <Button size="sm" disabled>
-                      Join Cohort
-                    </Button>
+                    {enrolledCohortIds.has(cohort.id) ? (
+                      <Badge variant="secondary">Enrolled</Badge>
+                    ) : (
+                      <form action={enrollInCohortAction.bind(null, { error: null }) as (formData: FormData) => void}>
+                        <input type="hidden" name="cohort_id" value={cohort.id} />
+                        <Button size="sm" type="submit">
+                          Join Cohort
+                        </Button>
+                      </form>
+                    )}
                   </div>
                 </CardContent>
               </Card>
