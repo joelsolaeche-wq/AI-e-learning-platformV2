@@ -2,10 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { Database } from '@/lib/database.types'
-import { enrollInCohortAction } from '@/lib/actions/enrollment.actions'
+import { EnrollButton } from '@/components/EnrollButton'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -76,6 +75,14 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .select('cohort_id')
       .eq('user_id', user.id),
   ])
+
+  // Log server-side errors so they appear in Vercel function logs
+  if (modulesResult.error) {
+    console.error('modules fetch error', modulesResult.error)
+  }
+  if (cohortsResult.error) {
+    console.error('cohorts fetch error', cohortsResult.error)
+  }
 
   // Extract data with explicit types — Supabase discriminated union requires casts
   const modules: ModuleWithLessons[] = (modulesResult.data as ModuleWithLessons[] | null) ?? []
@@ -165,8 +172,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
         )}
       </section>
 
-      <Separator />
-
       {/* Cohort Schedule */}
       <section>
         <h2 className="text-[20px] font-semibold mb-4">Available Cohorts</h2>
@@ -199,18 +204,13 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         })}
                       </p>
                       {cohort.max_seats > 0 && (
-                        <p>{cohort.max_seats} seats available</p>
+                        <p>Up to {cohort.max_seats} seats</p>
                       )}
                     </div>
                     {enrolledCohortIds.has(cohort.id) ? (
                       <Badge variant="secondary">Enrolled</Badge>
                     ) : (
-                      <form action={enrollInCohortAction.bind(null, { error: null }) as (formData: FormData) => void}>
-                        <input type="hidden" name="cohort_id" value={cohort.id} />
-                        <Button size="sm" type="submit">
-                          Join Cohort
-                        </Button>
-                      </form>
+                      <EnrollButton cohortId={cohort.id} />
                     )}
                   </div>
                 </CardContent>
