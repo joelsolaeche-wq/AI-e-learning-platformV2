@@ -3,19 +3,31 @@
 import { useActionState } from 'react'
 import { enrollInCohortAction } from '@/lib/actions/enrollment.actions'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 interface EnrollButtonProps {
   cohortId: string
 }
 
 /**
- * Client component that wires enrollInCohortAction through useActionState
- * so error strings returned by the action are surfaced to the user.
- *
- * Must be a client component because useActionState is a React hook.
+ * Client component that wires enrollInCohortAction through useActionState.
+ * On success (state.enrolled === true), renders an "Enrolled" badge in-place
+ * instead of navigating away — satisfying ROADMAP SC-1.
+ * Error strings returned by the action are surfaced below the form.
  */
 export function EnrollButton({ cohortId }: EnrollButtonProps) {
-  const [state, formAction] = useActionState(enrollInCohortAction, { error: null })
+  const [state, formAction] = useActionState(enrollInCohortAction, {
+    error: null,
+    enrolled: false,
+  })
+
+  if (state.enrolled) {
+    return (
+      <Badge variant="secondary" className="cursor-default">
+        Enrolled
+      </Badge>
+    )
+  }
 
   return (
     <form action={formAction}>
