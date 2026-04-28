@@ -32,7 +32,7 @@
 
 ---
 
-## Phase 3: Cohort Enrollment + Learner Dashboard
+## Phase 3: Cohort Enrollment + Learner Dashboard ✓ COMPLETE (3/3 plans)
 **Goal:** An authenticated user can view available cohorts for a course, enroll in one, and land on a dashboard that shows their enrolled cohort with progress indicators and cohort teammates.
 **Requirements:** COHORT-01, COHORT-02, COHORT-03, COHORT-04
 **UI hint:** yes
