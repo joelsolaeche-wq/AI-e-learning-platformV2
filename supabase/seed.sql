@@ -160,3 +160,101 @@ values (
   'active'
 )
 on conflict (id) do nothing;
+
+-- ============================================================
+-- Phase 3: Teammate seed data
+-- 2 fake teammate accounts so the learner dashboard cohort roster
+-- is non-empty on first run. auth.users stub rows are inserted
+-- first because public.profiles.id has a FK to auth.users.id.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- auth.users stub rows (REQUIRED before profiles insert)
+-- ------------------------------------------------------------
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  created_at,
+  updated_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_sso_user,
+  is_anonymous
+)
+values
+  (
+    '00000000-0000-0000-0000-000000000061',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'jane.doe@tallertechnologies.net',
+    '',
+    now(),
+    now(),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Jane Doe"}'::jsonb,
+    false,
+    false
+  ),
+  (
+    '00000000-0000-0000-0000-000000000062',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'alex.kim@tallertechnologies.net',
+    '',
+    now(),
+    now(),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Alex Kim"}'::jsonb,
+    false,
+    false
+  )
+on conflict (id) do nothing;
+
+-- ------------------------------------------------------------
+-- public.profiles for the two teammates
+-- ------------------------------------------------------------
+insert into public.profiles (id, email, full_name, role, org_id)
+values
+  (
+    '00000000-0000-0000-0000-000000000061',
+    'jane.doe@tallertechnologies.net',
+    'Jane Doe',
+    'learner',
+    '00000000-0000-0000-0000-000000000001'
+  ),
+  (
+    '00000000-0000-0000-0000-000000000062',
+    'alex.kim@tallertechnologies.net',
+    'Alex Kim',
+    'learner',
+    '00000000-0000-0000-0000-000000000001'
+  )
+on conflict (id) do nothing;
+
+-- ------------------------------------------------------------
+-- public.enrollments for both teammates in the May 2026 Cohort
+-- ------------------------------------------------------------
+insert into public.enrollments (id, user_id, cohort_id, status)
+values
+  (
+    '00000000-0000-0000-0000-000000000071',
+    '00000000-0000-0000-0000-000000000061',
+    '00000000-0000-0000-0000-000000000050',
+    'active'
+  ),
+  (
+    '00000000-0000-0000-0000-000000000072',
+    '00000000-0000-0000-0000-000000000062',
+    '00000000-0000-0000-0000-000000000050',
+    'active'
+  )
+on conflict (id) do nothing;
