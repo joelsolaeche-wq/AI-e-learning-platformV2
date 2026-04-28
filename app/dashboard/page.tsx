@@ -117,24 +117,38 @@ export default async function DashboardPage() {
     .filter((id): id is string => Boolean(id))
 
   // Total lessons per course = lessons whose module belongs to that course.
-  // We fetch all lessons for the courses the user is enrolled in, then group.
+  // Two-step approach: filter modules by course_id, then filter lessons by module_id.
+  // The single-query .in('modules.course_id', courseIds) dot-path syntax is NOT
+  // supported by PostgREST for .in() filters — it is silently ignored, causing
+  // all lessons in the DB to be returned regardless of enrollment.
   const lessonsByCourse = new Map<string, LessonRowMin[]>()
   if (courseIds.length > 0) {
-    const { data: lessonsData } = await supabase
-      .from('lessons')
-      .select('id, module_id, modules!inner(course_id)')
-      .in('modules.course_id', courseIds)
+    type ModuleRow = { id: string; course_id: string }
+    const { data: rawModuleData } = await supabase
+      .from('modules')
+      .select('id, course_id')
+      .in('course_id', courseIds)
+    const moduleData = (rawModuleData ?? []) as unknown as ModuleRow[]
 
-    type LessonWithModule = LessonRowMin & {
-      modules: { course_id: string } | null
-    }
-    const rows = (lessonsData ?? []) as unknown as LessonWithModule[]
-    for (const row of rows) {
-      const courseId = row.modules?.course_id
-      if (!courseId) continue
-      const arr = lessonsByCourse.get(courseId) ?? []
-      arr.push({ id: row.id, module_id: row.module_id })
-      lessonsByCourse.set(courseId, arr)
+    const moduleIds = moduleData.map((m) => m.id)
+    const moduleToCourse = new Map(
+      moduleData.map((m) => [m.id, m.course_id])
+    )
+
+    if (moduleIds.length > 0) {
+      const { data: lessonsData } = await supabase
+        .from('lessons')
+        .select('id, module_id')
+        .in('module_id', moduleIds)
+
+      const rows = (lessonsData ?? []) as LessonRowMin[]
+      for (const row of rows) {
+        const courseId = moduleToCourse.get(row.module_id)
+        if (!courseId) continue
+        const arr = lessonsByCourse.get(courseId) ?? []
+        arr.push({ id: row.id, module_id: row.module_id })
+        lessonsByCourse.set(courseId, arr)
+      }
     }
   }
 
