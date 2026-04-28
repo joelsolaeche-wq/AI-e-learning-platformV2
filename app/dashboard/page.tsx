@@ -269,7 +269,7 @@ export default async function DashboardPage() {
                                 {displayName(t.profiles)}
                               </span>
                               <span className="text-xs text-muted-foreground">
-                                —
+                                0%
                               </span>
                             </li>
                           ) : null
