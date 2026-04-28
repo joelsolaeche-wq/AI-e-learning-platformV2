@@ -45,6 +45,33 @@ export async function enrollInCohortAction(
     redirect('/auth/login')
   }
 
+  // Validate cohort exists, is active, and has available capacity
+  type CohortValidation = { id: string; status: string; max_seats: number }
+  const { data: rawCohort, error: cohortError } = await supabase
+    .from('cohorts')
+    .select('id, status, max_seats')
+    .eq('id', cohortId)
+    .single()
+  const cohort = rawCohort as unknown as CohortValidation | null
+
+  if (cohortError || !cohort) {
+    return { error: 'Cohort not found.' }
+  }
+  if (cohort.status !== 'active') {
+    return { error: 'This cohort is not open for enrollment.' }
+  }
+  if (cohort.max_seats > 0) {
+    const { count } = await supabase
+      .from('enrollments')
+      .select('id', { count: 'exact', head: true })
+      .eq('cohort_id', cohortId)
+      .eq('status', 'active')
+
+    if ((count ?? 0) >= cohort.max_seats) {
+      return { error: 'This cohort is full.' }
+    }
+  }
+
   const enrollmentRow: TablesInsert<'enrollments'> = {
     user_id: user.id,
     cohort_id: cohortId,
