@@ -82,6 +82,7 @@ export async function enrollInCohortAction(
     .insert(enrollmentRow as never)
 
   if (error) {
+    console.error('[enrollInCohortAction] insert error:', error.code, error.message, error.details)
     // Postgres 23505 = unique_violation. Per D-03, an existing enrollment is not
     // an error from the user's perspective — silently send them to the dashboard.
     if (error.code === '23505') {
