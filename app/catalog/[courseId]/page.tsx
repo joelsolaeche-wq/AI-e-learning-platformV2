@@ -198,7 +198,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         })}
                       </p>
                       {cohort.max_seats > 0 && (
-                        <p>{cohort.max_seats} seats available</p>
+                        <p>Up to {cohort.max_seats} seats</p>
                       )}
                     </div>
                     {enrolledCohortIds.has(cohort.id) ? (
