@@ -76,6 +76,14 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .eq('user_id', user.id),
   ])
 
+  // Log server-side errors so they appear in Vercel function logs
+  if (modulesResult.error) {
+    console.error('modules fetch error', modulesResult.error)
+  }
+  if (cohortsResult.error) {
+    console.error('cohorts fetch error', cohortsResult.error)
+  }
+
   // Extract data with explicit types — Supabase discriminated union requires casts
   const modules: ModuleWithLessons[] = (modulesResult.data as ModuleWithLessons[] | null) ?? []
   const cohorts: CohortRow[] = (cohortsResult.data as CohortRow[] | null) ?? []
