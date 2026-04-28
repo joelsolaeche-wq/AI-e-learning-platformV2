@@ -1,0 +1,18 @@
+# env
+.env.local
+.env*.local
+
+# Next.js
+.next/
+out/
+build/
+
+# Node
+node_modules/
+
+# Supabase
+supabase/.temp/
+
+# OS
+.DS_Store
+Thumbs.db
