@@ -4,6 +4,12 @@ import Link from 'next/link'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import type { Database } from '@/lib/database.types'
+
+type CourseRow = Pick<
+  Database['public']['Tables']['courses']['Row'],
+  'id' | 'title' | 'slug' | 'description' | 'thumbnail_url'
+>
 
 export default async function CatalogPage() {
   const supabase = await createClient()
@@ -12,11 +18,13 @@ export default async function CatalogPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data: courses, error } = await supabase
+  const { data, error } = await supabase
     .from('courses')
     .select('id, title, slug, description, thumbnail_url')
     .eq('is_published', true)
     .order('created_at', { ascending: true })
+
+  const courses: CourseRow[] = data ?? []
 
   return (
     <main className="mx-auto w-full max-w-[1280px] px-8 pt-12 pb-16">
@@ -35,7 +43,7 @@ export default async function CatalogPage() {
         </div>
       )}
 
-      {!error && courses && courses.length === 0 && (
+      {!error && courses.length === 0 && (
         <div className="rounded-lg border border-border bg-card p-8 text-center">
           <p className="text-[20px] font-semibold">No courses available yet</p>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -44,7 +52,7 @@ export default async function CatalogPage() {
         </div>
       )}
 
-      {!error && courses && courses.length > 0 && (
+      {!error && courses.length > 0 && (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {courses.map((course) => (
             <Card
