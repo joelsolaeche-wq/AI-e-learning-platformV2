@@ -14,14 +14,7 @@ export default async function CatalogPage() {
 
   const { data: courses, error } = await supabase
     .from('courses')
-    .select(`
-      id,
-      title,
-      slug,
-      description,
-      thumbnail_url,
-      cohorts (count)
-    `)
+    .select('id, title, slug, description, thumbnail_url')
     .eq('is_published', true)
     .order('created_at', { ascending: true })
 
