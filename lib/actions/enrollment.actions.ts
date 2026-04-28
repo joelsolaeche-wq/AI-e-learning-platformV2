@@ -95,5 +95,6 @@ export async function enrollInCohortAction(
   }
 
   revalidatePath('/catalog')
+  revalidatePath('/dashboard')
   return { error: null, enrolled: true }
 }
