@@ -172,8 +172,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
         )}
       </section>
 
-      <Separator />
-
       {/* Cohort Schedule */}
       <section>
         <h2 className="text-[20px] font-semibold mb-4">Available Cohorts</h2>
