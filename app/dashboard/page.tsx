@@ -161,6 +161,7 @@ export default async function DashboardPage() {
       .select('cohort_id, user_id, profiles ( id, full_name, email )')
       .in('cohort_id', cohortIds)
       .neq('user_id', user.id)
+      .eq('status', 'active')
 
     const rows = (teammatesData ?? []) as unknown as TeammateEnrollment[]
     for (const row of rows) {
