@@ -2,10 +2,9 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import type { Database } from '@/lib/database.types'
-import { enrollInCohortAction } from '@/lib/actions/enrollment.actions'
+import { EnrollButton } from '@/components/EnrollButton'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -205,12 +204,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                     {enrolledCohortIds.has(cohort.id) ? (
                       <Badge variant="secondary">Enrolled</Badge>
                     ) : (
-                      <form action={enrollInCohortAction.bind(null, { error: null }) as (formData: FormData) => void}>
-                        <input type="hidden" name="cohort_id" value={cohort.id} />
-                        <Button size="sm" type="submit">
-                          Join Cohort
-                        </Button>
-                      </form>
+                      <EnrollButton cohortId={cohort.id} />
                     )}
                   </div>
                 </CardContent>
