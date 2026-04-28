@@ -2,198 +2,212 @@
 phase: 03-cohort-enrollment-learner-dashboard
 reviewed: 2026-04-28T00:00:00Z
 depth: standard
-files_reviewed: 5
+files_reviewed: 4
 files_reviewed_list:
-  - supabase/migrations/20260428000003_enrollment_rls.sql
-  - supabase/seed.sql
   - lib/actions/enrollment.actions.ts
-  - app/catalog/[courseId]/page.tsx
+  - components/EnrollButton.tsx
   - app/dashboard/page.tsx
+  - supabase/migrations/20260428000004_lesson_enrollment_rls.sql
 findings:
-  critical: 4
-  warning: 5
-  info: 3
-  total: 12
+  critical: 3
+  warning: 3
+  info: 2
+  total: 8
 status: issues_found
 ---
 
-# Phase 03: Code Review Report
+# Phase 03: Code Review Report (Gap-Closure Pass)
 
 **Reviewed:** 2026-04-28T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 5
+**Files Reviewed:** 4
 **Status:** issues_found
 
 ## Summary
 
-Phase 3 delivers cohort enrollment (a Server Action + RLS migration) and a learner dashboard page. The enrollment action itself is clean and the RLS self-enrollment policy is correct. However, four critical defects were found: a conflicting SELECT policy that makes the teammate query silently return zero rows, a broken lesson-filter query that will always be empty (causing every course to show 0% progress), an open enrollment flow that never checks seat capacity, and the enrollment form bypassing the Server Action signature contract in a way that swallows all error feedback. Five additional warnings cover a missing SELECT policy on enrollments for the dashboard, a hardcoded `"0%"` teammate-progress label, seat-count display copy showing total seats rather than available seats, a missing `notFound()` guard on modules/cohorts query errors, and a missing `moduleIdx` variable usage. Three informational items are also noted.
+Four gap-closure files were reviewed: the enrollment server action, the new EnrollButton client component, the dashboard page, and the lessons RLS migration. The enrollment action and EnrollButton are largely well-structured — the `useActionState` wiring and duplicate-enrollment guard are correct in isolation — but three critical defects exist. The duplicate-enrollment path (23505) calls `redirect()` instead of returning `{ enrolled: true }`, so the EnrollButton badge never appears for already-enrolled users and a hard navigation away from the catalog fires unexpectedly. The seat-capacity check is a non-atomic read-then-write that can be raced. The new RLS lessons policy gates on enrollment existence but not enrollment status, so users with dropped or completed enrollments retain read access to lesson rows indefinitely. Three warnings cover the missing `revalidatePath('/dashboard')` on the success path, an unfiltered teammate query that surfaces dropped enrollees, and the hardcoded `'0%'` teammate progress stub that misrepresents real data. Two info items address minor type-safety and contract clarity.
 
 ---
 
 ## Critical Issues
 
-### CR-01: RLS conflict — new `profiles` SELECT policy overlaps with existing one, causing teammate query to return no rows
+### CR-01: Duplicate-enrollment path calls `redirect()` instead of returning `{ enrolled: true }` — EnrollButton badge never renders
 
-**File:** `supabase/migrations/20260428000003_enrollment_rls.sql:26-38`
+**File:** `lib/actions/enrollment.actions.ts:89-91`
 
-**Issue:** Migration 00001 already creates a `"Users can view their own profile"` SELECT policy on `public.profiles`. In Supabase/PostgreSQL, multiple permissive SELECT policies are OR-combined at query time. That means the new cohort-mate policy is additive with respect to the current user's own row, which is fine. However, the real problem is in `app/dashboard/page.tsx` line 146: the teammate query uses `.select('cohort_id, user_id, profiles ( id, full_name, email )')` — this is a **join** that reads each teammate's profile row. The reading user is the current user, so `auth.uid()` is their own ID; the profile row being read belongs to the teammate. Under the original migration-00001 policy (`auth.uid() = id`) those rows are **blocked** unless the new cohort-mate policy fires. The new policy fires only if there is a matching pair of enrollment rows (`e1.user_id = auth.uid()` and `e2.user_id = profiles.id`). This part is logically correct.
+**Issue:** When the Postgres `INSERT` fails with `error.code === '23505'` (unique violation — user already enrolled), the action calls:
 
-The actual bug is that `public.enrollments` has **no SELECT policy that allows the current user to read other users' enrollment rows**. The only enrollments SELECT policy is `"Users can view their own enrollments"` (`auth.uid() = user_id`). The subquery inside the cohort-mate profiles policy (`select 1 from public.enrollments e1 join public.enrollments e2 …`) runs in the security context of the calling user and is therefore subject to RLS on `enrollments`. `e2.user_id = profiles.id` is a teammate row — `auth.uid() ≠ e2.user_id` — so that row is filtered out by the `enrollments` SELECT policy before the join can match. The EXISTS subquery always returns false, the policy never grants access, and the teammate profiles query returns empty.
+```ts
+revalidatePath('/dashboard')
+redirect('/dashboard')
+```
 
-**Fix:** Add a SELECT policy on `enrollments` that allows a user to read enrollment rows for cohorts they are themselves enrolled in:
+`redirect()` in a Next.js Server Action throws a special `NEXT_REDIRECT` response that aborts execution and navigates the browser. Because it throws rather than returning, `useActionState` in `EnrollButton` never receives `{ enrolled: true }`. The consequence is two-fold:
+
+1. If the user is on the catalog page and clicks "Join Cohort" a second time (or if the form is submitted on a fresh page load after an earlier enrollment), the action hard-navigates them to `/dashboard` instead of showing the "Enrolled" badge in-place — violating the in-place confirmation described in the component JSDoc and ROADMAP SC-1.
+2. If the user was already enrolled and a re-render causes the form to appear (e.g., stale cache), the badge replacement never happens and the "Join Cohort" button remains indefinitely.
+
+**Fix:**
+```typescript
+// lib/actions/enrollment.actions.ts  ~line 89
+if (error.code === '23505') {
+  revalidatePath('/dashboard')
+  revalidatePath('/catalog')
+  return { error: null, enrolled: true }   // return, do NOT redirect
+}
+```
+
+---
+
+### CR-02: Seat-capacity check is a non-atomic read-then-write — allows overbooking under concurrent requests
+
+**File:** `lib/actions/enrollment.actions.ts:64-73`
+
+**Issue:** The action reads the current enrollment count in one statement and inserts in a separate statement with no database-level serialization between them:
+
+```ts
+const { count } = await supabase
+  .from('enrollments')
+  .select('id', { count: 'exact', head: true })
+  .eq('cohort_id', cohortId)
+  .eq('status', 'active')
+
+if ((count ?? 0) >= cohort.max_seats) {
+  return { error: 'This cohort is full.' }
+}
+// ... then insert
+```
+
+Two concurrent requests that both read `count = max_seats - 1` will both pass the guard and both insert, producing `max_seats + 1` enrollments. For a demo with a tight seat limit this is a real risk. The `unique (user_id, cohort_id)` constraint on the `enrollments` table prevents the same user from double-enrolling, but does not prevent two different users from racing past the same seat count.
+
+**Fix:** Move the capacity enforcement to the database layer using a `SECURITY DEFINER` RPC function that executes count-and-insert inside a single transaction with a `FOR UPDATE` lock:
 
 ```sql
-create policy "Users can view enrollments in their cohorts"
-  on public.enrollments
+-- supabase/functions/enroll_if_capacity.sql
+create or replace function public.enroll_if_capacity(
+  p_user_id   uuid,
+  p_cohort_id uuid
+) returns void language plpgsql security definer as $$
+declare
+  v_max integer;
+  v_cur integer;
+begin
+  select max_seats into v_max
+    from public.cohorts where id = p_cohort_id for update;
+  select count(*) into v_cur
+    from public.enrollments
+    where cohort_id = p_cohort_id and status = 'active';
+  if v_max > 0 and v_cur >= v_max then
+    raise exception 'cohort_full';
+  end if;
+  insert into public.enrollments (user_id, cohort_id)
+    values (p_user_id, p_cohort_id);
+end;
+$$;
+```
+
+Call via `supabase.rpc('enroll_if_capacity', { p_user_id: user.id, p_cohort_id: cohortId })` and handle the `cohort_full` exception as the seat-full error return.
+
+---
+
+### CR-03: Lessons RLS policy does not filter on `e.status = 'active'` — dropped and completed users retain lesson read access
+
+**File:** `supabase/migrations/20260428000004_lesson_enrollment_rls.sql:28-40`
+
+**Issue:** The new `"enrolled users can view lessons"` SELECT policy is:
+
+```sql
+using (
+  exists (
+    select 1
+    from public.enrollments e
+    join public.cohorts c on c.id = e.cohort_id
+    join public.modules m on m.course_id = c.course_id
+    where e.user_id = auth.uid()
+      and m.id = lessons.module_id
+  )
+);
+```
+
+There is no `e.status = 'active'` predicate. The `enrollments` table has a `status` column with values `'active'`, `'dropped'`, `'completed'`. A learner whose enrollment is set to `'dropped'` retains a row in `enrollments`; the `EXISTS` subquery still matches and grants lesson access. The intent of the migration ("replace the permissive policy with an enrollment-scoped policy") is therefore not fulfilled for users whose enrollment has lapsed.
+
+**Fix:**
+```sql
+create policy "enrolled users can view lessons"
+  on public.lessons
   for select
   using (
-    cohort_id in (
-      select cohort_id
-      from public.enrollments
-      where user_id = auth.uid()
+    exists (
+      select 1
+      from public.enrollments e
+      join public.cohorts c on c.id = e.cohort_id
+      join public.modules m on m.course_id = c.course_id
+      where e.user_id  = auth.uid()
+        and e.status   = 'active'          -- required
+        and m.id       = lessons.module_id
     )
   );
-```
-
-Note: this policy references `enrollments` recursively. Postgres evaluates it with the original security context using the policy it already matched for the current user's own rows, so the self-reference is safe (Supabase documents this pattern for cohort/team use cases).
-
----
-
-### CR-02: Lesson progress query is broken — `in('modules.course_id', courseIds)` does not filter via the joined relation
-
-**File:** `app/dashboard/page.tsx:125-126`
-
-**Issue:** The query to count total lessons per course is:
-
-```ts
-supabase
-  .from('lessons')
-  .select('id, module_id, modules!inner(course_id)')
-  .in('modules.course_id', courseIds)
-```
-
-The `.in('modules.course_id', courseIds)` call passes a **dotted column path** as the column name. PostgREST / Supabase JS client v2 does **not** support filtering on a joined relation's column via `.in()` using dot notation — that syntax is only valid for `.select()` column aliases. The filter is silently ignored, so `lessonsData` returns **all lessons in the database** (for every course), not just those belonging to the user's enrolled courses. The grouping logic on lines 131–138 then works correctly on that full set, but for a large catalog this is also a correctness issue: if two courses happen to share the same lesson (which cannot happen here due to FK constraints, but the intent is still wrong).
-
-More practically: the filter being ignored means `lessonsByCourse` is populated from all lessons, so `totalLessons` and `completedCount` will be correct only by accident when the seed data has one course. In any multi-course deployment `totalLessons` counts all lessons platform-wide per course, inflating the denominator and making progress always appear lower than it is.
-
-**Fix:** Use a server-side subquery approach or filter after the join using an RPC, or restructure the query to filter by `module_id` in a subquery:
-
-```ts
-// Fetch module ids belonging to the enrolled courses first
-const { data: moduleData } = await supabase
-  .from('modules')
-  .select('id, course_id')
-  .in('course_id', courseIds)
-
-const moduleIds = (moduleData ?? []).map((m) => m.id)
-const moduleToCourse = new Map(
-  (moduleData ?? []).map((m) => [m.id, m.course_id])
-)
-
-const { data: lessonsData } = await supabase
-  .from('lessons')
-  .select('id, module_id')
-  .in('module_id', moduleIds)
-```
-
-Then group by `moduleToCourse.get(row.module_id)` instead of `row.modules?.course_id`.
-
----
-
-### CR-03: Enrollment action accepts any `cohort_id` without validating seat availability or cohort status
-
-**File:** `lib/actions/enrollment.actions.ts:48-66`
-
-**Issue:** `enrollInCohortAction` inserts an enrollment row for any `cohort_id` the client submits. There is no server-side check that:
-1. The cohort exists and has `status = 'active'` (a user could enroll in a `'draft'` or `'cancelled'` cohort by forging the form value).
-2. The current seat count is below `max_seats` (when `max_seats > 0`). The RLS INSERT policy only checks `auth.uid() = user_id` — it does not guard on cohort state or capacity.
-
-An attacker (or a race condition in the demo) can bypass seat limits entirely by POSTing directly to the Server Action endpoint with a valid `cohort_id`.
-
-**Fix:** Add a guard before the insert:
-
-```ts
-// Validate cohort exists, is active, and has capacity
-const { data: cohort, error: cohortError } = await supabase
-  .from('cohorts')
-  .select('id, status, max_seats')
-  .eq('id', cohortId)
-  .single()
-
-if (cohortError || !cohort) {
-  return { error: 'Cohort not found.' }
-}
-if (cohort.status !== 'active') {
-  return { error: 'This cohort is not open for enrollment.' }
-}
-if (cohort.max_seats > 0) {
-  const { count } = await supabase
-    .from('enrollments')
-    .select('id', { count: 'exact', head: true })
-    .eq('cohort_id', cohortId)
-    .eq('status', 'active')
-
-  if ((count ?? 0) >= cohort.max_seats) {
-    return { error: 'This cohort is full.' }
-  }
-}
-```
-
----
-
-### CR-04: Enrollment form bypasses the Server Action `_prevState` contract — errors are never surfaced to the user
-
-**File:** `app/catalog/[courseId]/page.tsx:208`
-
-**Issue:** The form wires the action as:
-
-```tsx
-<form action={enrollInCohortAction.bind(null, { error: null }) as (formData: FormData) => void}>
-```
-
-`enrollInCohortAction` has the signature `(_prevState, formData) => Promise<EnrollmentActionResult>`. Using `.bind(null, { error: null })` pre-fills `_prevState` and produces a function of arity 1 (`(formData) => Promise<EnrollmentActionResult>`), which Next.js accepts as a form action. However, the return value `EnrollmentActionResult` containing `{ error: "Couldn't enroll — try again" }` is **never consumed**. There is no `useFormState` / `useActionState` call, no error boundary, and no mechanism to display the returned error string to the user. On any non-23505 DB error (network blip, constraint violation, unexpected Supabase error) the user sees nothing — the form silently fails.
-
-This is a blocker because the demo walkthrough requirement is "every click must work" — if enrollment fails the user is stuck with no feedback and no retry path.
-
-**Fix:** Convert the cohort card to a client component using `useActionState` (React 19 / Next.js 15):
-
-```tsx
-'use client'
-import { useActionState } from 'react'
-import { enrollInCohortAction } from '@/lib/actions/enrollment.actions'
-
-export function EnrollButton({ cohortId }: { cohortId: string }) {
-  const [state, formAction] = useActionState(enrollInCohortAction, { error: null })
-
-  return (
-    <form action={formAction}>
-      <input type="hidden" name="cohort_id" value={cohortId} />
-      {state.error && (
-        <p className="text-xs text-destructive mb-1">{state.error}</p>
-      )}
-      <Button size="sm" type="submit">Join Cohort</Button>
-    </form>
-  )
-}
 ```
 
 ---
 
 ## Warnings
 
-### WR-01: Missing SELECT policy on `enrollments` for the dashboard teammate query
+### WR-01: Successful new enrollment does not call `revalidatePath('/dashboard')`
 
-**File:** `supabase/migrations/20260428000003_enrollment_rls.sql` (missing addition)
+**File:** `lib/actions/enrollment.actions.ts:97-98`
 
-**Issue:** `app/dashboard/page.tsx` line 146 queries `enrollments` filtering by `cohort_id in (cohortIds)` and `user_id != current_user`. The only SELECT policy on `enrollments` (from migration 00002) is `auth.uid() = user_id`. Rows where `user_id` is a teammate are blocked. The dashboard teammate section will always be empty even if the cohort-mate profiles policy is fixed (see CR-01), because the enrollment rows for teammates cannot be read at all.
+**Issue:** The happy-path return on line 97 only revalidates `/catalog`:
 
-This is partially covered by CR-01 but is a distinct policy gap that needs its own fix in the migration file. See the fix proposed in CR-01.
+```ts
+revalidatePath('/catalog')
+return { error: null, enrolled: true }
+```
+
+The duplicate-enrollment path (line 90) does call `revalidatePath('/dashboard')`, but the new-enrollment path does not. If the user navigates to `/dashboard` within Next.js's cache window after completing a fresh enrollment, the page will render the previously-cached result and show zero cohorts.
+
+**Fix:**
+```typescript
+revalidatePath('/catalog')
+revalidatePath('/dashboard')   // add
+return { error: null, enrolled: true }
+```
 
 ---
 
-### WR-02: Teammate progress is hardcoded as `"0%"` — misleading for any real user
+### WR-02: Teammate roster query has no `status = 'active'` filter — dropped learners appear as active teammates
 
-**File:** `app/dashboard/page.tsx:258`
+**File:** `app/dashboard/page.tsx:159-170`
+
+**Issue:** The teammates query:
+
+```ts
+await supabase
+  .from('enrollments')
+  .select('cohort_id, user_id, profiles ( id, full_name, email )')
+  .in('cohort_id', cohortIds)
+  .neq('user_id', user.id)
+```
+
+…has no `.eq('status', 'active')` filter. Users whose enrollment status is `'dropped'` or `'completed'` will still appear in the Teammates section. Additionally, the companion RLS policy in migration 00003 (`"Users can view enrollments in their cohorts"`) also lacks a status filter, so PostgREST will return those rows through the policy.
+
+**Fix:**
+```typescript
+await supabase
+  .from('enrollments')
+  .select('cohort_id, user_id, profiles ( id, full_name, email )')
+  .in('cohort_id', cohortIds)
+  .neq('user_id', user.id)
+  .eq('status', 'active')   // add
+```
+
+The RLS policy in migration 00003 should also be updated to add `and status = 'active'` in the `cohort_id in (select cohort_id from public.enrollments where user_id = auth.uid())` subquery.
+
+---
+
+### WR-03: Teammate progress hardcoded as `'0%'` — presents stale data as factual
+
+**File:** `app/dashboard/page.tsx:272`
 
 **Issue:**
 
@@ -203,127 +217,56 @@ This is partially covered by CR-01 but is a distinct policy gap that needs its o
 </span>
 ```
 
-The teammate's lesson progress is hardcoded to `"0%"` unconditionally. This will display incorrect data for any real teammate who has completed lessons — including the seeded teammates once their lesson_progress rows exist. This is not a placeholder comment; the UI presents it as live data.
+This is unconditionally rendered as the string `'0%'` for every teammate. Once any teammate completes a lesson the displayed value is wrong. There is no visual indicator to the user that this is a placeholder, so it reads as real progress data. This causes silent misinformation in the dashboard.
 
-**Fix:** Either fetch `lesson_progress` for all cohort members (gated by RLS, which already allows users to view their own progress; a separate per-user progress query or aggregated view would be needed), or label it honestly as "progress unavailable" until the data is fetched. At minimum remove the hardcoded value and show a dash or skeleton.
-
----
-
-### WR-03: Seat count display says "N seats available" but shows `max_seats` (total), not remaining
-
-**File:** `app/catalog/[courseId]/page.tsx:201-203`
-
-**Issue:**
+**Fix:** Replace the hardcoded value with a neutral placeholder until real per-teammate progress is fetched, to make the unimplemented state explicit rather than misleading:
 
 ```tsx
-{cohort.max_seats > 0 && (
-  <p>{cohort.max_seats} seats available</p>
-)}
+<span className="text-xs text-muted-foreground">
+  {'—'}
+</span>
 ```
 
-`max_seats` is the capacity ceiling, not the number of open seats. As users enroll, this number stays static at the total. A full cohort will still show "20 seats available". The copy is factually wrong once any enrollment exists.
-
-**Fix:** Either fetch the current enrollment count per cohort and compute `max_seats - enrolledCount`, or change the label to "Up to {max_seats} seats" to accurately reflect that it is a capacity, not remaining availability.
-
----
-
-### WR-04: `modulesResult.error` is never checked before rendering modules
-
-**File:** `app/catalog/[courseId]/page.tsx:81`
-
-**Issue:** After the parallel fetch, `cohortsResult.error` and `modulesResult.error` are never inspected. Only `courseResult.error` is checked (line 91). If the modules or cohorts query fails (transient DB error, RLS denial, network timeout), the page silently renders with empty sections rather than surfacing a meaningful error to the user or triggering a 500.
-
-**Fix:**
-
-```ts
-if (modulesResult.error) {
-  // Log server-side; render graceful degradation or throw
-  console.error('modules fetch error', modulesResult.error)
-}
-if (cohortsResult.error) {
-  console.error('cohorts fetch error', cohortsResult.error)
-}
-```
-
-At minimum log the errors server-side so they appear in Vercel function logs.
-
----
-
-### WR-05: `moduleIdx` variable is declared but the separator logic is fragile
-
-**File:** `app/catalog/[courseId]/page.tsx:136, 161`
-
-**Issue:** The `moduleIdx` variable in `modules.map((module, moduleIdx) => ...)` is used at line 161 to render a `<Separator>` between module cards:
-
-```tsx
-{moduleIdx < modules.length - 1 && <Separator className="mt-6" />}
-```
-
-This is fine functionally, but there is also a top-level `<Separator />` at line 167 that unconditionally renders after the entire modules section, creating a double separator if `modules.length > 0` — the last module renders no inner separator, then the outer separator fires. The visual result is two separators in a row (the outer one after modules, and the one after the cohorts section header). Low-severity visual defect but inconsistent with the Linear-style design goal.
-
-**Fix:** Remove the outer `<Separator />` at line 167, or remove the inner conditional at line 161 and keep only the outer separator.
+Alternatively, omit the span entirely. Real teammate progress requires either a separate `lesson_progress` query scoped to cohort-member `user_id` values, or an aggregate view — both are out of scope until implemented.
 
 ---
 
 ## Info
 
-### IN-01: `insert … as never` type cast suppresses compile-time type safety
+### IN-01: `insert(enrollmentRow as never)` suppresses TypeScript type safety on the insert call
 
-**File:** `lib/actions/enrollment.actions.ts:55`
+**File:** `lib/actions/enrollment.actions.ts:83`
 
-**Issue:**
+**Issue:** `insert(enrollmentRow as never)` uses `as never` to silence a type mismatch between `TablesInsert<'enrollments'>` and the Supabase client's `.insert()` overload. This prevents TypeScript from catching future schema changes (e.g., a new `NOT NULL` column added to `enrollments`) that would make the insert fail at runtime. The `as never` cast is an unusually aggressive suppression.
 
-```ts
-const { error } = await supabase
-  .from('enrollments')
-  .insert(enrollmentRow as never)
-```
+**Fix:** Pass an object literal directly, which typically avoids the type inference conflict:
 
-The `as never` cast works around a typing mismatch but disables TypeScript's ability to catch future schema changes that would break this insert. The root cause is likely the `TablesInsert<'enrollments'>` type being slightly mismatched with what `supabase-js` expects internally (a known issue with Supabase's generated types and the JS client's overloads). Use `as unknown as Parameters<...>[0]` if a cast is truly needed, or better, remove the cast and fix the underlying type if the generated types are correct.
-
-**Fix:** Replace `as never` with a specific cast or remove it entirely:
-
-```ts
+```typescript
 const { error } = await supabase
   .from('enrollments')
   .insert({ user_id: user.id, cohort_id: cohortId })
 ```
 
-Passing the object literal directly often avoids the type mismatch.
+If `TablesInsert<'enrollments'>` is genuinely misaligned, regenerate the types with `supabase gen types typescript --local` to confirm the schema matches the generated types, then remove the cast.
 
 ---
 
-### IN-02: `displayName` falls back to email prefix without sanitization
+### IN-02: `enrolled?: boolean` optional type allows action returns without the field — tighten the contract
 
-**File:** `app/dashboard/page.tsx:51-54`
+**File:** `lib/actions/enrollment.actions.ts:8-11` / `components/EnrollButton.tsx:19`
 
-**Issue:**
+**Issue:** `EnrollmentActionResult` declares `enrolled` as optional (`enrolled?: boolean`). This means any return of `{ error: null }` without an `enrolled` key is type-valid, yet `state.enrolled` in `EnrollButton` would be `undefined` (falsy). The guard `if (state.enrolled)` still works correctly because `undefined` is falsy, but the loose type permits a future maintainer to add an early-return `{ error: null }` path that silently skips the badge. Making `enrolled` required makes the contract explicit.
 
-```ts
-function displayName(p: TeammateProfile): string {
-  if (p.full_name && p.full_name.trim().length > 0) return p.full_name
-  return p.email.split('@')[0]
+**Fix:**
+```typescript
+// lib/actions/enrollment.actions.ts
+export type EnrollmentActionResult = {
+  error: string | null
+  enrolled: boolean   // required, not optional
 }
 ```
 
-`p.email` comes from the `profiles` table, which is populated from `auth.users.email`. It is not user-controlled at this layer, so the risk is low. However, if `p.email` is somehow null (profiles email column is `NOT NULL` but the TypeScript type is `string`, not `string | null`, so this is consistent) the `.split()` call would throw. The type is consistent here — no immediate bug — but worth noting for robustness.
-
-**Fix:** No immediate change needed. Acceptable as-is given the NOT NULL DB constraint.
-
----
-
-### IN-03: Seed auth.users rows use empty string for `encrypted_password`
-
-**File:** `supabase/seed.sql:200, 215`
-
-**Issue:** The stub auth.users rows for Jane Doe and Alex Kim have `encrypted_password = ''`. Supabase's auth system will not allow password-based login for these accounts (bcrypt hashes are never empty strings), which is intentional for seed-only demo accounts. However, if someone accidentally tries to use these emails to sign up via the normal flow, the trigger will hit a `unique (email)` violation on `auth.users` and the sign-up will fail with a confusing error. A code comment would help clarify intent; more importantly, the seed should consider using a properly hashed placeholder or setting `is_sso_user = true` to make it clear these are not real accounts.
-
-**Fix:** Add a comment; optionally set `is_anonymous = true` or use a different dummy email domain that is clearly not real:
-
-```sql
--- These are display-only seed accounts. Login is intentionally disabled
--- (empty encrypted_password). Do not attempt to authenticate as these users.
-```
+Update all return sites that omit `enrolled` to include it explicitly (e.g., the seat-capacity error return should become `{ error: 'This cohort is full.', enrolled: false }`).
 
 ---
 
