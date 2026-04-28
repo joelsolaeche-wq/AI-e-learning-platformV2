@@ -7,6 +7,7 @@ import type { TablesInsert } from '@/lib/database.types'
 
 export type EnrollmentActionResult = {
   error: string | null
+  enrolled?: boolean
 }
 
 /**
@@ -93,6 +94,6 @@ export async function enrollInCohortAction(
     return { error: "Couldn't enroll — try again" }
   }
 
-  revalidatePath('/dashboard')
-  redirect('/dashboard')
+  revalidatePath('/catalog')
+  return { error: null, enrolled: true }
 }
