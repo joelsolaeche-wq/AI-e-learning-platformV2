@@ -15,8 +15,8 @@
 
 ### Course Catalog (CATALOG)
 
-- [ ] **CATALOG-01**: User can browse a catalog of available AI courses
-- [ ] **CATALOG-02**: User can view a course detail page with description, modules, and cohort schedule
+- [x] **CATALOG-01**: User can browse a catalog of available AI courses *(Validated Phase 2)*
+- [x] **CATALOG-02**: User can view a course detail page with description, modules, and cohort schedule *(Validated Phase 2)*
 
 ### Cohort & Enrollment (COHORT)
 
