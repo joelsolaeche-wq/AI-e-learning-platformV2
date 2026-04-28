@@ -1,10 +1,30 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import type { Database } from '@/lib/database.types'
+
+type CourseRow = Pick<
+  Database['public']['Tables']['courses']['Row'],
+  'id' | 'title' | 'slug' | 'description' | 'thumbnail_url'
+>
+
+type LessonRow = Pick<
+  Database['public']['Tables']['lessons']['Row'],
+  'id' | 'title' | 'position' | 'duration_seconds'
+>
+
+type ModuleWithLessons = Pick<
+  Database['public']['Tables']['modules']['Row'],
+  'id' | 'title' | 'position'
+> & { lessons: LessonRow[] | null }
+
+type CohortRow = Pick<
+  Database['public']['Tables']['cohorts']['Row'],
+  'id' | 'title' | 'starts_at' | 'ends_at' | 'max_seats' | 'status'
+>
 
 interface PageProps {
   params: Promise<{ courseId: string }>
@@ -51,14 +71,18 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .order('starts_at', { ascending: true }),
   ])
 
+  // Extract data with explicit types — Supabase discriminated union requires casts
+  const modules: ModuleWithLessons[] = (modulesResult.data as ModuleWithLessons[] | null) ?? []
+  const cohorts: CohortRow[] = (cohortsResult.data as CohortRow[] | null) ?? []
+
   // 404 if course not found or not published
-  if (courseResult.error || !courseResult.data) {
+  // Extract data before the guard so TypeScript can narrow it independently
+  const rawCourse = courseResult.data
+  if (courseResult.error || !rawCourse) {
     notFound()
   }
 
-  const course = courseResult.data
-  const modules = modulesResult.data ?? []
-  const cohorts = cohortsResult.data ?? []
+  const course: CourseRow = rawCourse as CourseRow
 
   return (
     <main className="mx-auto w-full max-w-[896px] px-8 pt-12 pb-16 space-y-8">
