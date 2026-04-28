@@ -15,6 +15,23 @@ create policy "Users can insert their own enrollments"
   with check (auth.uid() = user_id);
 
 -- ------------------------------------------------------------
+-- enrollments: allow reading peer enrollment rows in the same cohort
+-- Required so the cohort-mate profiles policy subquery can resolve
+-- teammate enrollment rows (RLS on enrollments applies to the
+-- EXISTS subquery inside the profiles policy).
+-- ------------------------------------------------------------
+create policy "Users can view enrollments in their cohorts"
+  on public.enrollments
+  for select
+  using (
+    cohort_id in (
+      select cohort_id
+      from public.enrollments
+      where user_id = auth.uid()
+    )
+  );
+
+-- ------------------------------------------------------------
 -- profiles: allow reading cohort-mates
 -- A learner can read a profile row when:
 --   1. it's their own row (already covered by the existing policy
