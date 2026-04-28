@@ -62,6 +62,13 @@ export async function enrollInCohortAction(
     return { error: 'This cohort is not open for enrollment.' }
   }
   if (cohort.max_seats > 0) {
+    // KNOWN LIMITATION (CR-02): This read-then-write is non-atomic.
+    // Two concurrent requests that both read count = max_seats - 1 can both
+    // pass the guard and insert, resulting in max_seats + 1 enrollments.
+    // For a production system this should be replaced with a SECURITY DEFINER
+    // RPC function that performs count-and-insert inside a single transaction
+    // with a FOR UPDATE lock on the cohorts row.
+    // Deferred: low-concurrency demo environment makes this an acceptable risk.
     const { count } = await supabase
       .from('enrollments')
       .select('id', { count: 'exact', head: true })
