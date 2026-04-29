@@ -1,9 +1,11 @@
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/lib/database.types'
+import type { Message } from 'ai'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { Separator } from '@/components/ui/separator'
 import { QuizSection } from '@/components/QuizSection'
+import { TutorPanel } from '@/components/TutorPanel'
 
 // ---------------------------------------------------------------------------
 // Types — explicit Pick aliases following the dashboard/catalog page convention
@@ -36,6 +38,13 @@ type RawQuizDef = {
   questions: unknown
 }
 
+// ChatMessageRow: shape of ai_chat_messages rows used to build initialMessages for TutorPanel.
+type ChatMessageRow = {
+  id: string
+  role: string
+  content: string
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -58,7 +67,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
   // Fetch lesson + progress + quiz in parallel.
   // RLS on lessons ensures only enrolled users can read rows — if the lesson
   // returns null (not found or not enrolled), we call notFound().
-  const [lessonResult, progressResult, quizResult] = await Promise.all([
+  const [lessonResult, progressResult, quizResult, chatHistoryResult] = await Promise.all([
     supabase
       .from('lessons')
       .select('id, title, module_id, mux_playback_id, duration_seconds, transcript')
@@ -75,6 +84,27 @@ export default async function LessonPage({ params }: LessonPageProps) {
       .select('questions')
       .eq('lesson_id', lessonId)
       .maybeSingle(),
+    (async () => {
+      // Load the chat session for this (user, lesson) pair, then fetch messages.
+      // Returns [] if no session exists yet (first visit).
+      const { data: sessionData } = await supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('lesson_id', lessonId)
+        .maybeSingle()
+
+      if (!sessionData) return []
+
+      const { data: messagesData } = await supabase
+        .from('ai_chat_messages')
+        .select('id, role, content')
+        .eq('session_id', (sessionData as unknown as { id: string }).id)
+        .order('created_at', { ascending: true })
+        .limit(20)
+
+      return (messagesData ?? []) as unknown as ChatMessageRow[]
+    })(),
   ])
 
   const rawLesson = lessonResult.data
@@ -95,6 +125,15 @@ export default async function LessonPage({ params }: LessonPageProps) {
     id,
     question,
     options,
+  }))
+
+  // Build initialMessages for TutorPanel — shape matches Vercel AI SDK Message type.
+  // chatHistoryResult is ChatMessageRow[] | [] (never null — IIFE returns [] on missing session).
+  const chatHistory = chatHistoryResult as ChatMessageRow[]
+  const initialMessages: Message[] = chatHistory.map((m) => ({
+    id: m.id,
+    role: m.role as 'user' | 'assistant',
+    content: m.content,
   }))
 
   return (
@@ -139,6 +178,8 @@ export default async function LessonPage({ params }: LessonPageProps) {
           />
         </>
       )}
+
+      <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
     </main>
   )
 }
