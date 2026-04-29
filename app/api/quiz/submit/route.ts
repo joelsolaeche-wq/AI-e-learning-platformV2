@@ -113,6 +113,10 @@ export async function POST(request: Request) {
   }
   const questions = def.questions as QuizQuestion[]
 
+  if (!questions || questions.length === 0) {
+    return NextResponse.json({ error: 'Quiz has no questions' }, { status: 422 })
+  }
+
   const breakdown = questions.map((q) => ({
     questionId: q.id,
     question: q.question,
