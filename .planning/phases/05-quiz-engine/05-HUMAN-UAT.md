@@ -1,9 +1,9 @@
 ---
-status: complete
+status: resolved
 phase: 05-quiz-engine
 source: [05-VERIFICATION.md]
 started: 2026-04-29T02:10:00Z
-updated: 2026-04-29T00:00:00Z
+updated: 2026-04-29T06:00:00Z
 ---
 
 ## Current Test
@@ -52,31 +52,25 @@ blocked: 3
 ## Gaps
 
 - truth: "When lesson_progress.completed = true, the Take Quiz button is enabled and quiz questions are revealed"
-  status: failed
+  status: resolved
   reason: "User reported: no, it doesnt unlock"
   severity: major
   test: 2
   root_cause: "VideoPlayer.tsx saveProgress() calls /api/video/progress and upserts completed=true in DB but never triggers a page re-render. QuizSection receives isLessonComplete from SSR (frozen at page load) and stays locked. Fix: call router.refresh() in VideoPlayer after API confirms completed=true."
+  fix: "Added router.refresh() chained via .then() after saveProgress() in both pct>=0.9 branch and handleEnded (commit d234ce0)"
   artifacts:
     - path: "components/VideoPlayer.tsx"
       issue: "saveProgress does not call router.refresh() after completed=true response"
-    - path: "app/dashboard/lesson/[lessonId]/page.tsx"
-      issue: "isLessonComplete computed once at SSR time (line 118), never refreshed"
-    - path: "components/QuizSection.tsx"
-      issue: "disabled={!isLessonComplete} at line 112; early return at line 62"
-  missing:
-    - "router.refresh() call in VideoPlayer after progress API returns completed=true"
   debug_session: ""
 
 - truth: "All 3 lesson pages show a quiz button (disabled or enabled depending on progress)"
-  status: failed
+  status: resolved
   reason: "User reported: modules 2 and 3 don't even show a quiz button"
   severity: major
   test: 2
   root_cause: "supabase/seed.sql only seeds one quiz_definitions row (for lesson ...0030). Lessons ...0031 and ...0032 have no rows, so quizDef=null, clientQuestions=[], and the render gate {clientQuestions.length > 0 && ...} hides the entire QuizSection. No code change needed — only seed data."
+  fix: "Added quiz_definitions rows for lessons ...0031 and ...0032 in seed.sql (commit a3e1561). Run npx supabase db reset to apply."
   artifacts:
     - path: "supabase/seed.sql"
       issue: "quiz_definitions only seeded for lesson 00000000-0000-0000-0000-000000000030 (lines 103-147)"
-  missing:
-    - "quiz_definitions rows for lesson IDs ...0031 and ...0032"
   debug_session: ""
