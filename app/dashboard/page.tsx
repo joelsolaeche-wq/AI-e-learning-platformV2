@@ -41,7 +41,7 @@ type TeammateEnrollment = {
 
 type LessonRowMin = Pick<
   Database['public']['Tables']['lessons']['Row'],
-  'id' | 'module_id'
+  'id' | 'module_id' | 'title'
 >
 
 // ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ export default async function DashboardPage() {
     if (moduleIds.length > 0) {
       const { data: lessonsData } = await supabase
         .from('lessons')
-        .select('id, module_id')
+        .select('id, module_id, title')
         .in('module_id', moduleIds)
 
       const rows = (lessonsData ?? []) as LessonRowMin[]
@@ -146,7 +146,7 @@ export default async function DashboardPage() {
         const courseId = moduleToCourse.get(row.module_id)
         if (!courseId) continue
         const arr = lessonsByCourse.get(courseId) ?? []
-        arr.push({ id: row.id, module_id: row.module_id })
+        arr.push({ id: row.id, module_id: row.module_id, title: row.title })
         lessonsByCourse.set(courseId, arr)
       }
     }
@@ -252,6 +252,35 @@ export default async function DashboardPage() {
                       />
                     </div>
                   </div>
+
+                  {/* Lessons list */}
+                  {courseLessons.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Lessons
+                      </p>
+                      <ul className="space-y-1">
+                        {courseLessons.map((lesson) => {
+                          const isCompleted = completedLessonIds.has(lesson.id)
+                          return (
+                            <li key={lesson.id} className="flex items-center justify-between gap-4 py-1">
+                              <Link
+                                href={`/dashboard/lesson/${lesson.id}`}
+                                className="text-sm hover:text-foreground transition-colors truncate"
+                              >
+                                {lesson.title}
+                              </Link>
+                              {isCompleted && (
+                                <Badge variant="secondary" className="shrink-0 text-xs">
+                                  Done
+                                </Badge>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
 
                   {/* Teammates section */}
                   {teammates.length > 0 && (
