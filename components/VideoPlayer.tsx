@@ -52,7 +52,7 @@ export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: 
     <MuxPlayer
       playbackId={playbackId}
       startTime={resumePosition}
-      onTimeUpdate={handleTimeUpdate as EventListenerOrEventListenerObject}
+      onTimeUpdate={handleTimeUpdate as unknown as () => void}
       onEnded={handleEnded}
       style={{ width: '100%', aspectRatio: '16/9' }}
       accentColor="#ffffff"

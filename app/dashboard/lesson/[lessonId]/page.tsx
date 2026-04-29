@@ -53,12 +53,13 @@ export default async function LessonPage({ params }: LessonPageProps) {
       .maybeSingle(),
   ])
 
-  if (lessonResult.error || !lessonResult.data) {
+  const rawLesson = lessonResult.data
+  if (lessonResult.error || !rawLesson) {
     notFound()
   }
 
-  const lesson = lessonResult.data as LessonRow
-  const progress = progressResult.data as ProgressRow | null
+  const lesson = rawLesson as LessonRow
+  const progress = progressResult.data as unknown as ProgressRow | null
 
   const resumePosition = progress?.last_position ?? 0
 
