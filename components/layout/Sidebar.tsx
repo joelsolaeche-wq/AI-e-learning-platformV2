@@ -3,8 +3,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState, useRef, useEffect } from 'react'
 import {
   Home, BookOpen, PlayCircle, Trophy, Users, Flame, MoreHorizontal,
+  LogOut, Settings, User as UserIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +26,28 @@ interface SidebarProps {
 export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) {
   const pathname = usePathname()
   const initials = (user.full_name || user.email).slice(0, 2).toUpperCase()
+
+  // User menu (Sign out lives here — POSTs to /auth/logout, the existing route)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuWrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    function handleDocClick(e: MouseEvent) {
+      if (menuWrapRef.current && !menuWrapRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    function handleEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleDocClick)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleDocClick)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [menuOpen])
 
   const NAV: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: Home },
@@ -102,17 +126,72 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
             </div>
           </div>
         )}
-        <div className="flex items-center gap-2.5 rounded-[10px] border border-border bg-card px-2.5 py-2">
-          <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[12.5px] font-semibold">{user.full_name || user.email.split('@')[0]}</div>
-            <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
-          </div>
-          <button className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground" aria-label="More">
-            <MoreHorizontal size={16} />
+        <div ref={menuWrapRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className={cn(
+              'flex w-full items-center gap-2.5 rounded-[10px] border bg-card px-2.5 py-2 text-left transition-colors',
+              menuOpen ? 'border-primary/40 ring-1 ring-primary/20' : 'border-border hover:border-white/15',
+            )}
+          >
+            <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[12.5px] font-semibold">{user.full_name || user.email.split('@')[0]}</div>
+              <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
+            </div>
+            <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg text-muted-foreground">
+              <MoreHorizontal size={16} />
+            </span>
           </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-xl border border-border bg-card/95 p-1 shadow-[0_12px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl animate-[fadeUp_.14s_ease]"
+            >
+              <div className="flex items-center gap-2 px-3 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Signed in as
+              </div>
+              <div className="border-b border-border px-3 pb-2 text-[12px] leading-tight">
+                <div className="truncate font-semibold">{user.full_name || user.email.split('@')[0]}</div>
+                <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
+              </div>
+
+              <Link
+                href="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                role="menuitem"
+              >
+                <UserIcon size={13} /> Profile
+              </Link>
+              <Link
+                href="/dashboard"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                role="menuitem"
+              >
+                <Settings size={13} /> Settings
+              </Link>
+
+              <div className="my-1 h-px bg-border/60" />
+
+              <form action="/auth/logout" method="POST">
+                <button
+                  type="submit"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12.5px] text-rose-300 transition-colors hover:bg-rose-400/10"
+                  role="menuitem"
+                >
+                  <LogOut size={13} /> Sign out
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </aside>
