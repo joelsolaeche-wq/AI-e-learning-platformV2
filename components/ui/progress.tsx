@@ -4,12 +4,17 @@ import { Progress as ProgressPrimitive } from "@base-ui/react/progress"
 
 import { cn } from "@/lib/utils"
 
+// WR-04: `className` targets the Root element (flex wrapper), NOT the track.
+// Use `trackClassName` to style the track bar itself (e.g. height, bg color).
+// Example — bare progress bar: <Progress value={pct} trackClassName="h-2" />
+// Example — with label:        <Progress value={pct}><ProgressLabel>…</ProgressLabel></Progress>
 function Progress({
   className,
+  trackClassName,
   children,
   value,
   ...props
-}: ProgressPrimitive.Root.Props) {
+}: ProgressPrimitive.Root.Props & { trackClassName?: string }) {
   return (
     <ProgressPrimitive.Root
       value={value}
@@ -18,7 +23,7 @@ function Progress({
       {...props}
     >
       {children}
-      <ProgressTrack>
+      <ProgressTrack className={trackClassName}>
         <ProgressIndicator />
       </ProgressTrack>
     </ProgressPrimitive.Root>

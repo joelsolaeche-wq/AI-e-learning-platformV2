@@ -218,7 +218,8 @@ export function QuizSection({ isLessonComplete, clientQuestions, lessonId }: Qui
             <p className={passed ? 'text-2xl font-semibold text-primary' : 'text-2xl font-semibold text-muted-foreground'}>
               {results.score} / {results.total} — {results.pct}%
             </p>
-            <Progress value={results.pct} className="h-2 mt-2" />
+            {/* WR-04: className targets the Root wrapper; use trackClassName for the bar height */}
+            <Progress value={results.pct} className="mt-2" trackClassName="h-2" />
           </CardContent>
         </Card>
 
