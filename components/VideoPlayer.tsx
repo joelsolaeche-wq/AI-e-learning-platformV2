@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import MuxPlayer from '@mux/mux-player-react'
 
 interface VideoPlayerProps {
@@ -13,6 +14,7 @@ interface VideoPlayerProps {
 export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: VideoPlayerProps) {
   const lastSaveRef = useRef<number>(0)
   const completedRef = useRef<boolean>(false)
+  const router = useRouter()
 
   const saveProgress = useCallback(async (position: number, completed: boolean) => {
     try {
@@ -34,7 +36,7 @@ export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: 
 
     if (pct >= 0.9 && !completedRef.current) {
       completedRef.current = true
-      saveProgress(pos, true)
+      saveProgress(pos, true).then(() => router.refresh())
       return
     }
 
@@ -42,11 +44,11 @@ export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: 
       lastSaveRef.current = now
       saveProgress(pos, false)
     }
-  }, [duration, saveProgress])
+  }, [duration, saveProgress, router])
 
   const handleEnded = useCallback(() => {
-    saveProgress(duration, true)
-  }, [duration, saveProgress])
+    saveProgress(duration, true).then(() => router.refresh())
+  }, [duration, saveProgress, router])
 
   return (
     <MuxPlayer
