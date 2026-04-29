@@ -4,7 +4,7 @@
 6
 
 ## Status
-Ready to plan
+Ready to execute
 
 ## Phases
 | # | Name | Status | Requirements |
@@ -16,8 +16,9 @@ Ready to plan
 | 5 | Quiz Engine | complete (3/3 plans) | QUIZ-01, QUIZ-02, QUIZ-03 |
 | 6 | AI Tutor | pending | AI-01, AI-02, AI-03, AI-04, AI-05 |
 
-## Current Plan
-06-01
+## Plans
+- [x] 06-01-PLAN.md — Install Vercel AI SDK + create POST /api/tutor/chat streaming Route Handler
+- [ ] 06-02-PLAN.md — Create TutorPanel client component + wire into lesson page
 
 ## Decisions
 - Use OR-based SELECT policy on profiles (Postgres allows multiple SELECT policies that OR together — new cohort-mate branch does not replace migration 00001 existing policy)
@@ -28,7 +29,7 @@ Ready to plan
 - LessonProgressRow inline type cast for PostgREST 14.5 schema inference workaround (consistent with Plan 02 EnrollmentCohortIdRow pattern)
 
 ## Last Updated
-2026-04-29 — Phase 5 Quiz Engine complete: RadioGroup + Progress components, RLS migration 00008, POST /api/quiz/submit route, QuizSection LOCKED→ACTIVE→SUBMITTED→RESULTS state machine
+2026-04-29 — Phase 6 AI Tutor planned (2/2 plans): POST /api/tutor/chat streaming Route Handler (Wave 1) + TutorPanel client component + lesson page integration (Wave 2)
 
 ## Decisions
 - Use OR-based SELECT policy on profiles (Postgres allows multiple SELECT policies that OR together — new cohort-mate branch does not replace migration 00001 existing policy)
