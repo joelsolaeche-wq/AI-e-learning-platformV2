@@ -15,6 +15,14 @@
 drop policy if exists "Authenticated users can view quiz definitions"
   on public.quiz_definitions;
 
+-- WR-02: Explicitly document write-policy intent.
+-- No INSERT / UPDATE / DELETE policies are created here or in migration 00002.
+-- RLS default-deny covers all writes for the authenticated role — this is
+-- intentional. quiz_definitions are managed by service_role (admin tooling)
+-- only. Any future migration adding write access MUST scope it to service_role
+-- explicitly; a broad authenticated-role write policy would expose correct
+-- answers to modification by enrolled users who know a quiz_definition UUID.
+
 -- Step 2: Create enrollment-scoped SELECT policy.
 -- Traversal: quiz_definitions.lesson_id → lessons.module_id
 --            → modules.course_id → cohorts.course_id
