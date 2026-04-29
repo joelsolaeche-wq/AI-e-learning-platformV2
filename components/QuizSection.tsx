@@ -77,12 +77,21 @@ export function QuizSection({ isLessonComplete, clientQuestions, lessonId }: Qui
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lessonId, answers }),
       })
-      if (!res.ok) throw new Error('submit failed')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const msg =
+          res.status === 403
+            ? (body.error ?? 'Complete the lesson before submitting the quiz.')
+            : res.status === 404
+            ? 'Quiz not found.'
+            : "Couldn't submit quiz — try again."
+        throw new Error(msg)
+      }
       const data: QuizResults = await res.json()
       setResults(data)
       setQuizState('RESULTS')
-    } catch {
-      setSubmitError("Couldn't submit quiz — try again")
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Couldn't submit quiz — try again")
       setQuizState('ACTIVE')
     }
   }
