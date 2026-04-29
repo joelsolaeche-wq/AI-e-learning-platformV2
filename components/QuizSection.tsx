@@ -260,13 +260,10 @@ export function QuizSection({ isLessonComplete, clientQuestions, lessonId }: Qui
                             </span>
                           )}
                         </label>
-                        {/* Reveal correct answer below user's wrong selection */}
-                        {isSelected && !item.correct && isCorrect && (
-                          <p className="text-green-400 text-xs mt-1 ml-8">
-                            Correct answer: {item.correctAnswer}
-                          </p>
-                        )}
-                        {/* Also show correct answer label on the correct option when user got it wrong */}
+                        {/* Show correct answer label on the correct option when user got it wrong.
+                            WR-01: The block above (isSelected && !item.correct && isCorrect) was
+                            unreachable — if the user selected this option and got it wrong,
+                            isCorrect is false for the selected (wrong) option. Removed. */}
                         {!isSelected && isCorrect && !item.correct && (
                           <p className="text-green-400 text-xs mt-1 ml-8">
                             Correct answer: {option}
