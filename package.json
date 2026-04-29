@@ -11,14 +11,16 @@
     "supabase:status": "npx supabase migration list"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^1.2.12",
     "@base-ui/react": "^1.4.1",
-    "@mux/mux-player-react": "^3.13.0",
     "@hookform/resolvers": "^5.2.2",
+    "@mux/mux-player-react": "^3.13.0",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.105.1",
     "@tailwindcss/postcss": "^4.2.4",
+    "ai": "^4.3.19",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.11.0",
