@@ -63,38 +63,25 @@ export async function POST(request: Request) {
   const lessonRow = lesson as unknown as LessonRow
 
   // Find-or-create ai_chat_sessions row for (user_id, lesson_id).
-  // Try SELECT first; if missing, INSERT.
+  // Upsert leverages the UNIQUE (user_id, lesson_id) constraint added in
+  // migration 20260429000001 to eliminate the SELECT-then-INSERT race condition.
   type SessionRow = { id: string }
 
-  const { data: existingSession, error: sessionSelectError } = await supabase
+  const { data: sessionData, error: sessionUpsertError } = await supabase
     .from('ai_chat_sessions')
+    .upsert(
+      { user_id: user.id, lesson_id: lessonId } as never,
+      { onConflict: 'user_id,lesson_id', ignoreDuplicates: false }
+    )
     .select('id')
-    .eq('user_id', user.id)
-    .eq('lesson_id', lessonId)
-    .maybeSingle()
+    .single()
 
-  if (sessionSelectError) {
-    console.error('[tutor chat] session select error', sessionSelectError)
+  if (sessionUpsertError || !sessionData) {
+    console.error('[tutor chat] session upsert error', sessionUpsertError)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 
-  let session: SessionRow
-
-  if (existingSession) {
-    session = existingSession as unknown as SessionRow
-  } else {
-    const { data: newSession, error: sessionInsertError } = await supabase
-      .from('ai_chat_sessions')
-      .insert({ user_id: user.id, lesson_id: lessonId } as never)
-      .select('id')
-      .single()
-
-    if (sessionInsertError || !newSession) {
-      console.error('[tutor chat] session insert error', sessionInsertError)
-      return NextResponse.json({ error: 'Internal error' }, { status: 500 })
-    }
-    session = newSession as unknown as SessionRow
-  }
+  const session = sessionData as unknown as SessionRow
 
   // Load last 20 messages for this session to provide conversation history.
   type MessageRow = { role: string; content: string }
