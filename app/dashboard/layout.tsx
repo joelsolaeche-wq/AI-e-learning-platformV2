@@ -22,9 +22,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
     full_name: profileData?.full_name ?? null,
   }
 
+  // Last-visited lesson for the Sidebar "Lesson" nav item
+  const { data: lastProgress } = await supabase
+    .from('lesson_progress')
+    .select('lesson_id')
+    .eq('user_id', user.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const lastLessonHref = (lastProgress as unknown as { lesson_id: string } | null)?.lesson_id
+    ? `/dashboard/lesson/${(lastProgress as unknown as { lesson_id: string }).lesson_id}`
+    : undefined
+
   return (
     <div className="grid min-h-screen grid-cols-[248px_1fr]">
-      <Sidebar user={sidebarUser} streakDays={7} />
+      <Sidebar user={sidebarUser} streakDays={7} lastLessonHref={lastLessonHref} />
       <div className="flex min-w-0 flex-col">
         <TopBar level={7} xp={2340} xpToNext={3800} notificationCount={3} />
         <div className="px-10 pb-20 pt-6">{children}</div>

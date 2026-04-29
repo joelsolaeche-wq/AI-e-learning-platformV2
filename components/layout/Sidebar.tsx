@@ -8,21 +8,35 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const NAV = [
-  { href: '/dashboard', label: 'Home', icon: Home },
-  { href: '/catalog', label: 'Catalog', icon: BookOpen },
-  { href: '/dashboard/achievements', label: 'Achievements', icon: Trophy },
-  { href: '/dashboard/team', label: 'Team', icon: Users },
-]
+interface NavItem {
+  href: string
+  label: string
+  icon: React.ElementType
+  activePrefix?: string
+}
 
 interface SidebarProps {
   user: { email: string; full_name?: string | null }
   streakDays?: number
+  lastLessonHref?: string
 }
 
-export function Sidebar({ user, streakDays = 7 }: SidebarProps) {
+export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) {
   const pathname = usePathname()
   const initials = (user.full_name || user.email).slice(0, 2).toUpperCase()
+
+  const NAV: NavItem[] = [
+    { href: '/dashboard', label: 'Home', icon: Home },
+    { href: '/catalog', label: 'Catalog', icon: BookOpen },
+    {
+      href: lastLessonHref ?? '/catalog',
+      label: 'Lesson',
+      icon: PlayCircle,
+      activePrefix: '/dashboard/lesson',
+    },
+    { href: '/dashboard/achievements', label: 'Achievements', icon: Trophy },
+    { href: '/dashboard/team', label: 'Team', icon: Users },
+  ]
 
   return (
     <aside className="sticky top-0 h-screen w-[248px] flex flex-col gap-5 border-r border-border bg-gradient-to-b from-white/[0.02] to-transparent px-3.5 py-5">
@@ -50,11 +64,13 @@ export function Sidebar({ user, streakDays = 7 }: SidebarProps) {
       {/* Nav */}
       <nav className="flex flex-col gap-0.5">
         {NAV.map((item) => {
-          const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
+          const active = item.activePrefix
+            ? pathname.startsWith(item.activePrefix)
+            : pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))
           const Icon = item.icon
           return (
             <Link
-              key={item.href}
+              key={item.label}
               href={item.href}
               className={cn(
                 'relative flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium transition-all',
