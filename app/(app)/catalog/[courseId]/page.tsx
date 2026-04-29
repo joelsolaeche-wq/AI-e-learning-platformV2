@@ -1,15 +1,16 @@
-// app/catalog/[courseId]/page.tsx
+// app/(app)/catalog/[courseId]/page.tsx
 // All data sourced from Supabase: courses, modules, lessons, cohorts,
-// user enrollments. No mocked instructor / ratings / office hours.
+// user enrollments + own lesson_progress (for completion checkmarks).
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import {
-  Clock, PlayCircle, ChevronRight, Users, Sparkles,
+  Clock, ChevronRight, Users, Sparkles,
   BookOpen, Code2, ChevronLeft, CheckCircle2, Calendar,
 } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
 import { EnrollButton } from '@/components/EnrollButton'
+import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -56,7 +57,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const [courseResult, modulesResult, cohortsResult, enrollmentsResult] = await Promise.all([
+  const [courseResult, modulesResult, cohortsResult, enrollmentsResult, progressResult] = await Promise.all([
     supabase
       .from('courses')
       .select('id, title, slug, description, thumbnail_url')
@@ -77,6 +78,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .from('enrollments')
       .select('cohort_id')
       .eq('user_id', user.id),
+    // Own lesson_progress so curriculum can show real completion checkmarks
+    supabase
+      .from('lesson_progress')
+      .select('lesson_id, completed')
+      .eq('user_id', user.id)
+      .eq('completed', true),
   ])
 
   if (modulesResult.error) console.error('modules fetch error', modulesResult.error)
@@ -88,12 +95,16 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const enrolledCohortIds = new Set<string>(
     ((enrollmentsResult.data ?? []) as EnrollmentCohortIdRow[]).map((e) => e.cohort_id),
   )
+  type ProgressLite = { lesson_id: string; completed: boolean }
+  const completedSet = new Set<string>(
+    ((progressResult.data ?? []) as ProgressLite[]).map((p) => p.lesson_id),
+  )
 
   const rawCourse = courseResult.data
   if (courseResult.error || !rawCourse) notFound()
   const course: CourseRow = rawCourse as CourseRow
 
-  // Real aggregate stats
+  // Aggregate stats
   const totalLessons = modules.reduce((s, m) => s + (m.lessons?.length ?? 0), 0)
   const totalSeconds = modules.reduce(
     (s, m) => s + (m.lessons ?? []).reduce((ss, l) => ss + (l.duration_seconds ?? 0), 0),
@@ -104,14 +115,33 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const activeCohortCount = cohorts.filter((c) => c.status === 'active').length
   const upcomingCohortCount = cohorts.filter((c) => new Date(c.starts_at).getTime() > Date.now()).length
 
-  // Module titles → "What you'll learn" (real data, just visualised)
+  // Curriculum data — same shape used by lesson page sidebar
+  const curriculum: CurriculumModule[] = modules.map((m) => ({
+    id: m.id,
+    title: m.title,
+    position: m.position,
+    lessons: (m.lessons ?? []).map((l) => ({
+      id: l.id,
+      title: l.title,
+      position: l.position,
+      duration_seconds: l.duration_seconds,
+      completed: completedSet.has(l.id),
+    })),
+  }))
+
+  // Enrollment status (any cohort of this course)
+  const isEnrolled = cohorts.some((c) => enrolledCohortIds.has(c.id))
+  const completedHere = curriculum.flatMap((m) => m.lessons).filter((l) => l.completed).length
+  const courseProgressPct = totalLessons > 0 ? Math.floor((completedHere / totalLessons) * 100) : 0
+
+  // What you'll learn — derived from module titles (real)
   const learningOutcomes = modules.slice(0, 6).map((m, i) => ({
     text: m.title,
     Icon: [Sparkles, Code2, BookOpen, CheckCircle2, Users, Calendar][i % 6],
   }))
 
   return (
-    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-8 pt-6 pb-16">
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8">
 
       {/* Back link */}
       <Link
@@ -121,12 +151,17 @@ export default async function CourseDetailPage({ params }: PageProps) {
         <ChevronLeft size={13} /> Back to catalog
       </Link>
 
-      {/* ── Hero ─────────────────────────────────────────────────── */}
+      {/* Hero */}
       <section className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_440px] lg:items-center">
         <div className="flex flex-col gap-5">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" />
             <span>Course</span>
+            {isEnrolled && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold normal-case text-emerald-400">
+                <CheckCircle2 size={10} /> Enrolled
+              </span>
+            )}
           </div>
 
           <h1 className="text-[44px] font-bold leading-[1.05] tracking-[-0.025em]">
@@ -139,10 +174,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
             </p>
           )}
 
-          {/* Stats bar — only counts that come from real rows */}
+          {/* Stats bar */}
           <div className="flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <PlayCircle size={14} className="text-primary" />
+              <BookOpen size={14} className="text-primary" />
               <span className="font-medium text-foreground">{totalLessons}</span> lesson{totalLessons !== 1 ? 's' : ''}
             </span>
             {totalHours > 0 && (
@@ -161,9 +196,27 @@ export default async function CourseDetailPage({ params }: PageProps) {
               {activeCohortCount > 0 && <span className="text-emerald-400/80">· {activeCohortCount} active</span>}
             </span>
           </div>
+
+          {/* Course progress bar (only if enrolled) */}
+          {isEnrolled && totalLessons > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="font-semibold uppercase tracking-[0.07em] text-muted-foreground">Your progress</span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {completedHere} / {totalLessons} · {courseProgressPct}%
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-700"
+                  style={{ width: `${courseProgressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Hero thumbnail (real thumbnail_url or gradient fallback) */}
+        {/* Hero thumbnail */}
         <div
           className="relative aspect-[16/11] overflow-hidden rounded-[22px] border border-border"
           style={{ background: `linear-gradient(135deg, ${hue.from}, ${hue.to})` }}
@@ -184,7 +237,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
         </div>
       </section>
 
-      {/* ── What you'll learn (module titles, real) ─────────────── */}
+      {/* What you'll learn */}
       {learningOutcomes.length > 0 && (
         <section className="flex flex-col gap-4">
           <h2 className="text-[20px] font-bold tracking-tight">What you&apos;ll learn</h2>
@@ -204,10 +257,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
         </section>
       )}
 
-      {/* ── Two-col: Curriculum + Cohorts ───────────────────────── */}
+      {/* Curriculum + Cohorts */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_400px] lg:items-start">
 
-        {/* Curriculum */}
+        {/* Curriculum — uses the SAME CurriculumTree component as the lesson sidebar */}
         <section className="flex flex-col gap-5">
           <div className="flex items-baseline justify-between">
             <h2 className="text-[20px] font-bold tracking-tight">Curriculum</h2>
@@ -221,54 +274,11 @@ export default async function CourseDetailPage({ params }: PageProps) {
               No modules available yet.
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {modules.map((mod, i) => {
-                const lessons = (mod.lessons ?? []).slice().sort((a, b) => a.position - b.position)
-                const moduleSeconds = lessons.reduce((s, l) => s + (l.duration_seconds ?? 0), 0)
-                const moduleMinutes = Math.round(moduleSeconds / 60)
-
-                return (
-                  <div key={mod.id} className="overflow-hidden rounded-2xl border border-border bg-card">
-                    <div className="flex items-center gap-3 border-b border-border bg-secondary/20 px-5 py-3.5">
-                      <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-gradient-to-br from-primary/20 to-accent/15 font-mono text-[12px] font-bold text-primary ring-1 ring-primary/30">
-                        {String(i + 1).padStart(2, '0')}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Module {i + 1}</div>
-                        <div className="text-[14.5px] font-bold tracking-tight">{mod.title}</div>
-                      </div>
-                      <div className="text-right text-[11.5px] text-muted-foreground">
-                        <div>{lessons.length} lesson{lessons.length !== 1 ? 's' : ''}</div>
-                        {moduleMinutes > 0 && <div>{moduleMinutes} min</div>}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col">
-                      {lessons.map((lesson, li) => (
-                        <Link
-                          key={lesson.id}
-                          href={`/dashboard/lesson/${lesson.id}`}
-                          className="group flex items-center gap-3 border-t border-border/40 px-5 py-2.5 first:border-t-0 transition-colors hover:bg-secondary/30"
-                        >
-                          <div className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-white/[0.06] font-mono text-[10px] font-medium text-muted-foreground transition-colors group-hover:bg-primary/20 group-hover:text-primary">
-                            {li + 1}
-                          </div>
-                          <PlayCircle size={13} className="flex-shrink-0 text-muted-foreground/60 transition-colors group-hover:text-primary" />
-                          <span className="flex-1 truncate text-[13px] text-muted-foreground transition-colors group-hover:text-foreground">
-                            {lesson.title}
-                          </span>
-                          {lesson.duration_seconds && (
-                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
-                              {Math.round(lesson.duration_seconds / 60)} min
-                            </span>
-                          )}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <CurriculumTree
+              modules={curriculum}
+              variant="full"
+              linksToLessons={isEnrolled}
+            />
           )}
         </section>
 
