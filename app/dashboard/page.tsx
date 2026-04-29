@@ -1,16 +1,12 @@
+// app/dashboard/page.tsx
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Ring } from '@/components/ui/Ring'
+import { Clock, Flame, Sparkles, Play, ChevronRight, Check, Trophy } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
 
-// ---------------------------------------------------------------------------
-// Types — explicit Pick aliases per the catalog page convention.
-// Supabase returns nested relations as discriminated unions, so we cast.
-// ---------------------------------------------------------------------------
-
+// Types — same as your existing dashboard
 type EnrollmentWithCohort = Pick<
   Database['public']['Tables']['enrollments']['Row'],
   'id' | 'cohort_id' | 'enrolled_at' | 'status'
@@ -28,69 +24,39 @@ type EnrollmentWithCohort = Pick<
     | null
 }
 
-type TeammateProfile = Pick<
-  Database['public']['Tables']['profiles']['Row'],
-  'id' | 'full_name' | 'email'
->
-
-type TeammateEnrollment = {
-  cohort_id: string
-  user_id: string
-  profiles: TeammateProfile | null
-}
-
 type LessonRowMin = Pick<
   Database['public']['Tables']['lessons']['Row'],
   'id' | 'module_id' | 'title'
 >
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function displayName(p: TeammateProfile): string {
-  if (p.full_name && p.full_name.trim().length > 0) return p.full_name
-  return p.email.split('@')[0]
+// A simple deterministic gradient pair per cohort (so visuals stay stable)
+const HUES: Array<{ from: string; to: string; icon: string }> = [
+  { from: '#7C3AED', to: '#22D3EE', icon: '✦' },
+  { from: '#06B6D4', to: '#10B981', icon: '◐' },
+  { from: '#F472B6', to: '#FB923C', icon: '◇' },
+  { from: '#FB7185', to: '#A78BFA', icon: '◎' },
+  { from: '#34D399', to: '#60A5FA', icon: '△' },
+  { from: '#FBBF24', to: '#F472B6', icon: '◈' },
+]
+function hueFor(id: string) {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return HUES[h % HUES.length]
 }
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default async function DashboardPage() {
   const supabase = await createClient()
-
-  // Belt-and-suspenders auth guard (middleware already protects this route).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // -- Fetch all data the dashboard needs in parallel ------------------------
   const [enrollmentsResult, progressResult] = await Promise.all([
     supabase
       .from('enrollments')
-      .select(`
-        id,
-        cohort_id,
-        enrolled_at,
-        status,
-        cohorts (
-          id,
-          title,
-          status,
-          starts_at,
-          course_id,
-          courses (
-            id,
-            title,
-            slug
-          )
-        )
-      `)
+      .select(`id, cohort_id, enrolled_at, status,
+               cohorts ( id, title, status, starts_at, course_id,
+                 courses ( id, title, slug ) )`)
       .eq('user_id', user.id)
       .eq('status', 'active'),
-
     supabase
       .from('lesson_progress')
       .select('lesson_id, completed')
@@ -100,27 +66,15 @@ export default async function DashboardPage() {
 
   const enrollments: EnrollmentWithCohort[] =
     (enrollmentsResult.data as EnrollmentWithCohort[] | null) ?? []
-
   type LessonProgressRow = { lesson_id: string; completed: boolean }
   const completedLessonIds = new Set<string>(
-    ((progressResult.data ?? []) as LessonProgressRow[]).map((r) => r.lesson_id)
+    ((progressResult.data ?? []) as LessonProgressRow[]).map((r) => r.lesson_id),
   )
 
-  // For each enrolled cohort we need (a) the total lesson count for that
-  // cohort's course and (b) the teammate roster. Both are scoped by the
-  // cohort_ids we already have.
-  const cohortIds = enrollments
-    .map((e) => e.cohort_id)
-    .filter((id): id is string => Boolean(id))
   const courseIds = enrollments
     .map((e) => e.cohorts?.course_id)
     .filter((id): id is string => Boolean(id))
 
-  // Total lessons per course = lessons whose module belongs to that course.
-  // Two-step approach: filter modules by course_id, then filter lessons by module_id.
-  // The single-query .in('modules.course_id', courseIds) dot-path syntax is NOT
-  // supported by PostgREST for .in() filters — it is silently ignored, causing
-  // all lessons in the DB to be returned regardless of enrollment.
   const lessonsByCourse = new Map<string, LessonRowMin[]>()
   if (courseIds.length > 0) {
     type ModuleRow = { id: string; course_id: string }
@@ -129,197 +83,127 @@ export default async function DashboardPage() {
       .select('id, course_id')
       .in('course_id', courseIds)
     const moduleData = (rawModuleData ?? []) as unknown as ModuleRow[]
-
     const moduleIds = moduleData.map((m) => m.id)
-    const moduleToCourse = new Map(
-      moduleData.map((m) => [m.id, m.course_id])
-    )
-
+    const moduleToCourse = new Map(moduleData.map((m) => [m.id, m.course_id]))
     if (moduleIds.length > 0) {
       const { data: lessonsData } = await supabase
         .from('lessons')
         .select('id, module_id, title')
         .in('module_id', moduleIds)
-
       const rows = (lessonsData ?? []) as LessonRowMin[]
       for (const row of rows) {
         const courseId = moduleToCourse.get(row.module_id)
         if (!courseId) continue
         const arr = lessonsByCourse.get(courseId) ?? []
-        arr.push({ id: row.id, module_id: row.module_id, title: row.title })
+        arr.push(row)
         lessonsByCourse.set(courseId, arr)
       }
     }
   }
 
-  // Teammates per cohort: enrollments rows where cohort_id ∈ cohortIds AND
-  // user_id != current user, joined to profiles for display info.
-  const teammatesByCohort = new Map<string, TeammateEnrollment[]>()
-  if (cohortIds.length > 0) {
-    const { data: teammatesData } = await supabase
-      .from('enrollments')
-      .select('cohort_id, user_id, profiles ( id, full_name, email )')
-      .in('cohort_id', cohortIds)
-      .neq('user_id', user.id)
-      .eq('status', 'active')
-
-    const rows = (teammatesData ?? []) as unknown as TeammateEnrollment[]
-    for (const row of rows) {
-      const arr = teammatesByCohort.get(row.cohort_id) ?? []
-      arr.push(row)
-      teammatesByCohort.set(row.cohort_id, arr)
-    }
-  }
+  const totalCompleted = completedLessonIds.size
+  const greetingName = (user.email ?? 'there').split('@')[0]
 
   return (
-    <main className="mx-auto w-full max-w-[896px] px-8 pt-12 pb-16 space-y-8">
-      {/* Header */}
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Your Cohorts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Welcome back, {user.email}
-          </p>
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8">
+      {/* Hero */}
+      <section className="relative overflow-hidden rounded-[22px] border border-border bg-[radial-gradient(600px_300px_at_10%_0%,rgba(139,92,246,0.22),transparent_60%),radial-gradient(500px_280px_at_90%_100%,rgba(34,211,238,0.18),transparent_60%),linear-gradient(180deg,#14142A,#0E0E1B)] px-11 py-10">
+        <div className="relative z-10 max-w-[640px]">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" /> Continue learning
+          </div>
+          <h1 className="my-4 text-[40px] font-bold leading-[1.08] tracking-[-0.025em]">
+            Welcome back, <span className="grad-text">{greetingName}</span>.
+            <br />
+            You&apos;ve completed <span className="grad-text">{totalCompleted}</span> lessons this season.
+          </h1>
+          <div className="mb-6 flex gap-4 text-[13px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5"><Clock size={14} /> 18 min today</span>
+            <span className="inline-flex items-center gap-1.5"><Flame size={14} /> 7-day streak</span>
+            <span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> +120 XP today</span>
+          </div>
+          <div className="flex gap-2.5">
+            <Link href="/catalog" className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4.5 py-2.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5">
+              <Play size={14} fill="currentColor" /> Browse catalog
+            </Link>
+          </div>
         </div>
+        {/* Decorative orbs */}
+        <div className="pointer-events-none absolute -right-10 -top-10 -bottom-10 w-[420px]">
+          <div className="absolute right-0 top-5 h-[280px] w-[280px] rounded-full bg-primary/45 blur-[40px]" />
+          <div className="absolute right-[100px] top-[200px] h-[220px] w-[220px] rounded-full bg-accent/35 blur-[40px]" />
+          <div className="absolute right-[220px] top-[60px] h-[140px] w-[140px] rounded-full bg-pink-400/30 blur-[40px]" />
+        </div>
+      </section>
 
-        <form action="/auth/logout" method="POST">
-          <Button type="submit" variant="ghost" size="sm">
-            Log out
-          </Button>
-        </form>
-      </header>
-
+      {/* Empty state */}
       {enrollments.length === 0 ? (
-        // Empty state — UI-SPEC copywriting locked
-        <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <section className="rounded-2xl border border-border bg-card p-12 text-center">
+          <Trophy size={36} className="mx-auto mb-3 text-muted-foreground" />
           <h2 className="text-lg font-semibold">No cohorts yet</h2>
-          <p className="text-sm text-muted-foreground">
-            Browse the catalog to find your team&apos;s AI course.
-          </p>
-          <Button variant="ghost" asChild>
-            <Link href="/catalog">Browse catalog →</Link>
-          </Button>
-        </div>
+          <p className="mt-1 text-sm text-muted-foreground">Browse the catalog to find your team&apos;s AI course.</p>
+          <Link href="/catalog" className="mt-4 inline-flex items-center gap-1 text-sm text-primary hover:underline">
+            Browse catalog <ChevronRight size={14} />
+          </Link>
+        </section>
       ) : (
-        <section className="space-y-4">
-          {enrollments.map((enrollment) => {
-            const cohort = enrollment.cohorts
-            if (!cohort) return null
-            const course = cohort.courses
+        <section className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold tracking-tight">Your cohorts</h2>
+            <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
+              View all <ChevronRight size={14} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {enrollments.map((enrollment) => {
+              const cohort = enrollment.cohorts
+              if (!cohort) return null
+              const courseLessons = lessonsByCourse.get(cohort.course_id) ?? []
+              const totalLessons = courseLessons.length
+              const completedCount = courseLessons.filter((l) => completedLessonIds.has(l.id)).length
+              const pct = totalLessons > 0 ? Math.floor((completedCount / totalLessons) * 100) : 0
+              const hue = hueFor(cohort.id)
+              const firstUnfinished = courseLessons.find((l) => !completedLessonIds.has(l.id)) ?? courseLessons[0]
+              const resumeHref = firstUnfinished ? `/dashboard/lesson/${firstUnfinished.id}` : `/catalog/${cohort.course_id}`
 
-            const courseLessons = lessonsByCourse.get(cohort.course_id) ?? []
-            const totalLessons = courseLessons.length
-            const completedCount = courseLessons.filter((l) =>
-              completedLessonIds.has(l.id)
-            ).length
-            const pct =
-              totalLessons > 0
-                ? Math.floor((completedCount / totalLessons) * 100)
-                : 0
-
-            const teammates = teammatesByCohort.get(cohort.id) ?? []
-
-            return (
-              <Card key={enrollment.id} className="border-border bg-card">
-                <CardHeader className="p-4 pb-2">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">{cohort.title}</h2>
-                    <Badge
-                      variant={cohort.status === 'active' ? 'default' : 'secondary'}
-                      className="capitalize"
-                    >
+              return (
+                <Link
+                  key={enrollment.id}
+                  href={resumeHref}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_8px_24px_rgba(0,0,0,0.25)]"
+                >
+                  <div
+                    className="relative grid aspect-[16/8] place-items-center"
+                    style={{ background: `linear-gradient(135deg, ${hue.from}, ${hue.to})` }}
+                  >
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.25),transparent_50%)]" />
+                    <span className="font-mono text-5xl font-semibold text-white/85 drop-shadow-[0_0_24px_rgba(0,0,0,0.4)]">
+                      {hue.icon}
+                    </span>
+                    <span className="absolute right-2.5 top-2.5 rounded-full bg-black/40 px-2.5 py-0.5 text-[10.5px] font-semibold backdrop-blur-md">
                       {cohort.status}
-                    </Badge>
+                    </span>
                   </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4 space-y-4">
-                  {/* Progress section */}
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">
-                      {completedCount} of {totalLessons} lessons complete
-                    </p>
-                    <div
-                      className="h-1.5 w-full rounded-full bg-muted"
-                      role="progressbar"
-                      aria-label={`Lesson progress: ${completedCount} of ${totalLessons} complete`}
-                      aria-valuenow={pct}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    >
-                      <div
-                        className="h-1.5 rounded-full bg-primary transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
+                  <div className="flex flex-col gap-2.5 p-4">
+                    <div className="text-[14.5px] font-semibold tracking-tight">{cohort.title}</div>
+                    <div className="text-[12px] text-muted-foreground">{totalLessons} lessons</div>
+                    <div className="mt-1 flex items-center gap-3">
+                      <Ring pct={pct} size={48} stroke={5}>
+                        <span className="text-[11px]">{pct}%</span>
+                      </Ring>
+                      <div className="flex-1">
+                        <div className="text-[13px] font-semibold">{completedCount}/{totalLessons}</div>
+                        <div className="text-[11px] text-muted-foreground">lessons complete</div>
+                      </div>
+                      <span className="grid h-9 w-9 place-items-center rounded-[10px] border border-primary/30 bg-primary/15 text-primary transition-all group-hover:border-transparent group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-[0_0_16px_rgba(139,92,246,0.5)]">
+                        <Play size={14} fill="currentColor" />
+                      </span>
                     </div>
                   </div>
-
-                  {/* Lessons list */}
-                  {courseLessons.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Lessons
-                      </p>
-                      <ul className="space-y-1">
-                        {courseLessons.map((lesson) => {
-                          const isCompleted = completedLessonIds.has(lesson.id)
-                          return (
-                            <li key={lesson.id} className="flex items-center justify-between gap-4 py-1">
-                              <Link
-                                href={`/dashboard/lesson/${lesson.id}`}
-                                className="text-sm hover:text-foreground transition-colors truncate"
-                              >
-                                {lesson.title}
-                              </Link>
-                              {isCompleted && (
-                                <Badge variant="secondary" className="shrink-0 text-xs">
-                                  Done
-                                </Badge>
-                              )}
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Teammates section */}
-                  {teammates.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Teammates
-                      </p>
-                      <ul className="space-y-1">
-                        {teammates.map((t) =>
-                          t.profiles ? (
-                            <li
-                              key={t.profiles.id}
-                              className="flex items-center justify-between gap-4 py-1"
-                            >
-                              <span className="text-sm">
-                                {displayName(t.profiles)}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                0%
-                              </span>
-                            </li>
-                          ) : null
-                        )}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Course link */}
-                  {course && (
-                    <div>
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/catalog/${course.id}`}>Go to Course →</Link>
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
+                </Link>
+              )
+            })}
+          </div>
         </section>
       )}
     </main>
