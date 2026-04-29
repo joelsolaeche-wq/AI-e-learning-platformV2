@@ -80,15 +80,15 @@ Plans:
 
 ---
 
-## Phase 6: AI Tutor ○ PLANNED (2/2 plans)
+## Phase 6: AI Tutor ✓ COMPLETE (2/2 plans) — 2026-04-29
 **Goal:** An enrolled user watching a lesson can open a persistent AI chat panel, ask questions grounded in the lesson transcript, receive streaming responses, and have the conversation persist across sessions — with graceful refusal for out-of-scope questions.
 **Requirements:** AI-01, AI-02, AI-03, AI-04, AI-05
 **UI hint:** yes
 **Plans:** 2 plans
 
 Plans:
-- [ ] 06-01-PLAN.md — Install Vercel AI SDK + create POST /api/tutor/chat streaming Route Handler
-- [ ] 06-02-PLAN.md — Create TutorPanel client component + wire into lesson page
+- [x] 06-01-PLAN.md — Install Vercel AI SDK + create POST /api/tutor/chat streaming Route Handler
+- [x] 06-02-PLAN.md — Create TutorPanel client component + wire into lesson page
 
 **Wave 1**
 - 06-01 (autonomous)

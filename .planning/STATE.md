@@ -14,11 +14,11 @@ Ready to execute
 | 3 | Cohort Enrollment + Learner Dashboard | complete (5/5 plans) | COHORT-01, COHORT-02, COHORT-03, COHORT-04 |
 | 4 | Video Lesson Experience | complete (3/3 plans) | LESSON-01, LESSON-02, LESSON-03, LESSON-04 |
 | 5 | Quiz Engine | complete (3/3 plans) | QUIZ-01, QUIZ-02, QUIZ-03 |
-| 6 | AI Tutor | pending | AI-01, AI-02, AI-03, AI-04, AI-05 |
+| 6 | AI Tutor | complete (2/2 plans) | AI-01, AI-02, AI-03, AI-04, AI-05 |
 
 ## Plans
 - [x] 06-01-PLAN.md — Install Vercel AI SDK + create POST /api/tutor/chat streaming Route Handler
-- [ ] 06-02-PLAN.md — Create TutorPanel client component + wire into lesson page
+- [x] 06-02-PLAN.md — Create TutorPanel client component + wire into lesson page
 
 ## Decisions
 - Use OR-based SELECT policy on profiles (Postgres allows multiple SELECT policies that OR together — new cohort-mate branch does not replace migration 00001 existing policy)
