@@ -40,14 +40,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Message too long (max 2000 chars)' }, { status: 400 })
   }
 
-  // T-6-02: Enrollment authorization via RLS piggyback on lessons table.
-  // RLS on lessons requires the lesson to exist in a published course and user
-  // to be authenticated. If the row is null → lesson doesn't exist or is not
-  // in a published course → 403.
-  type LessonRow = { id: string; title: string; transcript: string | null }
+  // T-6-02: Enrollment authorization — explicit enrollment check in addition to
+  // lessons RLS. Lessons RLS only requires is_published; the enrollment check
+  // below ensures the authenticated user has an active cohort enrollment that
+  // covers this lesson's course.
+  type LessonRow = { id: string; title: string; transcript: string | null; module_id: string }
   const { data: lesson, error: lessonError } = await supabase
     .from('lessons')
-    .select('id, title, transcript')
+    .select('id, title, transcript, module_id')
     .eq('id', lessonId)
     .maybeSingle()
 
@@ -56,11 +56,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
   if (!lesson) {
-    // RLS blocked row → not enrolled, or lesson doesn't exist → 403 either way.
+    // RLS blocked row → lesson doesn't exist or not published → 403.
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const lessonRow = lesson as unknown as LessonRow
+
+  // Explicit enrollment check: verify the user has an active enrollment in a
+  // cohort whose course contains this lesson's module.
+  const { data: enrollment } = await supabase
+    .from('enrollments')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .in(
+      'cohort_id',
+      supabase
+        .from('cohorts')
+        .select('id')
+        .in(
+          'course_id',
+          supabase
+            .from('modules')
+            .select('course_id')
+            .eq('id', lessonRow.module_id)
+        ) as never
+    )
+    .maybeSingle()
+
+  if (!enrollment) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // Find-or-create ai_chat_sessions row for (user_id, lesson_id).
   // Upsert leverages the UNIQUE (user_id, lesson_id) constraint added in
