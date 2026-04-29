@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -156,7 +157,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
                         key={lesson.id}
                         className="flex items-center justify-between py-2 text-sm"
                       >
-                        <span className="text-muted-foreground">{lesson.title}</span>
+                        <Link
+                            href={`/dashboard/lesson/${lesson.id}`}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {lesson.title}
+                          </Link>
                         {lesson.duration_seconds && (
                           <span className="text-xs text-muted-foreground">
                             {Math.round(lesson.duration_seconds / 60)} min
