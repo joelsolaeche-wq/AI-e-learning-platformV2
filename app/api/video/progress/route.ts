@@ -36,6 +36,13 @@ export async function POST(request: Request) {
     )
   }
 
+  // WR-06: Validate UUID format early — malformed lessonId causes PostgREST to
+  // return a query error which maps to a misleading 403. Return 400 instead.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!UUID_RE.test(lessonId)) {
+    return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
+  }
+
   if (typeof position !== 'number' || position < 0) {
     return NextResponse.json(
       { error: 'position must be a non-negative number' },
