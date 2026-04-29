@@ -24,24 +24,59 @@ export async function POST(request: Request) {
 
   const { lessonId, answers } = body
 
-  if (!lessonId || !answers || typeof answers !== 'object') {
+  // CR-02: Validate lessonId is a proper UUID before using in DB queries.
+  // PostgREST returns HTTP errors (not null) for malformed UUID predicates;
+  // those errors are swallowed by maybeSingle() — validate early to prevent
+  // silent gate bypasses and error-masking.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!lessonId || !UUID_RE.test(lessonId)) {
+    return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
+  }
+
+  // CR-04: Array.isArray check — typeof [] === 'object', so arrays bypass the
+  // typeof-only guard. Persisting an array into a jsonb object column corrupts
+  // the attempt record and breaks audit/replay logic.
+  if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
     return NextResponse.json(
       { error: 'Missing required fields: lessonId and answers are required' },
       { status: 400 }
     )
   }
 
+  // CR-01: Enrollment authorization — verify user is enrolled in a cohort whose
+  // course contains this lesson, piggybacking on the enrollment-scoped lessons
+  // RLS from migration 00004. If RLS blocks the row, data is null → 403.
+  const { data: enrollmentAuth, error: enrollmentAuthError } = await supabase
+    .from('lessons')
+    .select('id')
+    .eq('id', lessonId)
+    .maybeSingle()
+
+  if (enrollmentAuthError) {
+    console.error('[quiz submit] enrollment auth query error', enrollmentAuthError)
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  }
+  if (!enrollmentAuth) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   // Server-side lesson completion gate.
   // Re-check DB — never trust the client's claim that lesson is complete.
   // T-5-03 mitigation: client sending isComplete=true in body is ignored.
   // NOTE: as unknown as T | null — PostgREST 14.5 schema inference workaround (STATE.md)
+  // CR-03: Destructure error and return 500 on query failure — prevents silent gate bypass.
   type ProgressRow = { completed: boolean }
-  const { data: rawProgress } = await supabase
+  const { data: rawProgress, error: progressError } = await supabase
     .from('lesson_progress')
     .select('completed')
     .eq('user_id', user.id)
     .eq('lesson_id', lessonId)
     .maybeSingle()
+
+  if (progressError) {
+    console.error('[quiz submit] lesson_progress query error', progressError)
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  }
   const progress = rawProgress as unknown as ProgressRow | null
 
   if (!progress?.completed) {
@@ -50,12 +85,18 @@ export async function POST(request: Request) {
 
   // Fetch full quiz definition including correct_answer — server only, never sent to client.
   // T-5-01 mitigation layer 2: quiz_definitions only fetched in server context.
+  // CR-03: Destructure error on this query too.
   type QuizDefRow = { id: string; questions: unknown }
-  const { data: rawDef } = await supabase
+  const { data: rawDef, error: defError } = await supabase
     .from('quiz_definitions')
     .select('id, questions')
     .eq('lesson_id', lessonId)
     .maybeSingle()
+
+  if (defError) {
+    console.error('[quiz submit] quiz_definitions query error', defError)
+    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  }
   const def = rawDef as unknown as QuizDefRow | null
 
   if (!def) {
@@ -87,13 +128,22 @@ export async function POST(request: Request) {
 
   // Look up cohort_id via enrollment join — populates the nullable FK so Phase 6
   // and dashboard queries can filter by cohort. Falls back to null if not found.
+  // WR-03: Scope the enrollment lookup to the lesson's course via a join so we
+  // record the correct cohort_id even when a user has multiple active enrollments.
+  // CR-03: Destructure error; log and fall back to null rather than silently
+  // recording a wrong cohort_id that corrupts Phase 6 cohort-progress aggregation.
   type EnrollmentRow = { cohort_id: string }
-  const { data: rawEnrollment } = await supabase
+  const { data: rawEnrollment, error: enrollError } = await supabase
     .from('enrollments')
-    .select('cohort_id')
+    .select('cohort_id, cohorts!inner(course_id, modules!inner(lessons!inner(id)))')
     .eq('user_id', user.id)
     .eq('status', 'active')
+    .eq('cohorts.modules.lessons.id', lessonId)
     .maybeSingle()
+
+  if (enrollError) {
+    console.error('[quiz submit] enrollment cohort lookup error', enrollError)
+  }
   const enrollment = rawEnrollment as unknown as EnrollmentRow | null
   const cohortId = enrollment?.cohort_id ?? null
 
