@@ -1,4 +1,6 @@
-// app/dashboard/layout.tsx
+// app/(app)/layout.tsx
+// Shared chrome (Sidebar + TopBar + TutorPanel) for both /dashboard/* and /catalog/*.
+// (app) is a Next.js route group — directory name in parens does NOT appear in URLs.
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -6,7 +8,7 @@ import { TopBar } from '@/components/layout/TopBar'
 import { TutorPanel } from '@/components/TutorPanel'
 import { getLearnerStats } from '@/lib/learner-stats'
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')

@@ -1,9 +1,11 @@
+// app/(app)/dashboard/lesson/[lessonId]/page.tsx
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/lib/database.types'
 import type { Message } from 'ai'
 import { TutorPanel } from '@/components/TutorPanel'
 import { LessonExperience } from '@/components/LessonExperience'
+import type { CurriculumModule } from '@/components/CurriculumTree'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,10 +42,18 @@ type ChatMessageRow = {
   created_at: string
 }
 
-type ModuleLessonRow = {
+type CourseModuleRow = {
   id: string
   title: string
   position: number
+  course_id: string
+}
+
+type CourseLessonRow = {
+  id: string
+  title: string
+  position: number
+  module_id: string
   duration_seconds: number | null
 }
 
@@ -66,12 +76,12 @@ export default async function LessonPage({ params }: LessonPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Phase 1: lesson (with module join) + current-lesson progress + quiz + chat history
+  // Phase 1: lesson (with module + course join) + lesson progress + quiz + chat
   const [lessonResult, progressResult, quizResult, chatHistory] = await Promise.all([
     supabase
       .from('lessons')
       .select(
-        'id, title, module_id, mux_playback_id, duration_seconds, transcript, modules(id, title)',
+        'id, title, module_id, mux_playback_id, duration_seconds, transcript, modules(id, title, course_id, courses(id, title))',
       )
       .eq('id', lessonId)
       .single(),
@@ -107,12 +117,20 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const rawLesson = lessonResult.data
   if (lessonResult.error || !rawLesson) notFound()
 
-  const lesson = rawLesson as LessonRow & { modules: { id: string; title: string } | null }
+  type LessonWithJoins = LessonRow & {
+    modules: {
+      id: string
+      title: string
+      course_id: string
+      courses: { id: string; title: string } | null
+    } | null
+  }
+  const lesson = rawLesson as LessonWithJoins
   const progress = progressResult.data as unknown as ProgressRow | null
   const isLessonComplete = progress?.completed ?? false
   const resumePosition = progress?.last_position ?? 0
 
-  // Strip correct_answer before passing to client (QUIZ-02 / T-5-01)
+  // Strip correct_answer (QUIZ-02 / T-5-01)
   const quizDef = quizResult.data as unknown as RawQuizDef | null
   const rawQuestions = (quizDef?.questions ?? []) as RawQuizQuestion[]
   const clientQuestions: ClientQuestion[] = rawQuestions.map(({ id, question, options }) => ({
@@ -121,7 +139,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
     options,
   }))
 
-  // Build initialMessages for TutorPanel
   const initialMessages: Message[] = (chatHistory as ChatMessageRow[]).map((m) => ({
     id: m.id,
     role: m.role as 'user' | 'assistant',
@@ -129,39 +146,71 @@ export default async function LessonPage({ params }: LessonPageProps) {
     createdAt: new Date(m.created_at),
   }))
 
-  // Phase 2: all lessons in this module + user's lesson progress
-  // (needs lesson.module_id from phase 1)
-  const [moduleLessonsResult, userProgressResult] = await Promise.all([
-    supabase
-      .from('lessons')
-      .select('id, title, position, duration_seconds')
-      .eq('module_id', lesson.module_id)
-      .order('position'),
+  const courseId = lesson.modules?.course_id
+  const moduleTitle = lesson.modules?.title ?? 'Module'
+  const courseTitle = lesson.modules?.courses?.title ?? null
+
+  // Phase 2: ALL modules + ALL lessons of the parent course (for unified curriculum)
+  // + user's lesson progress (own-only via RLS)
+  const [allModulesResult, allLessonsResult, userProgressResult] = await Promise.all([
+    courseId
+      ? supabase
+          .from('modules')
+          .select('id, title, position, course_id')
+          .eq('course_id', courseId)
+          .order('position')
+      : Promise.resolve({ data: [], error: null }),
+    courseId
+      ? supabase
+          .from('lessons')
+          .select('id, title, position, module_id, duration_seconds, modules!inner(course_id)')
+          .eq('modules.course_id', courseId)
+      : Promise.resolve({ data: [], error: null }),
     supabase.from('lesson_progress').select('lesson_id, completed').eq('user_id', user.id),
   ])
 
-  const rawModuleLessons = (moduleLessonsResult.data ?? []) as ModuleLessonRow[]
+  const allModules = (allModulesResult.data ?? []) as CourseModuleRow[]
+  const allLessons = (allLessonsResult.data ?? []) as CourseLessonRow[]
   const progressMap = new Map<string, boolean>(
     ((userProgressResult.data ?? []) as UserProgressRow[]).map((r) => [r.lesson_id, r.completed]),
   )
-  const moduleLessons = rawModuleLessons.map((ml) => ({
-    ...ml,
-    completed: progressMap.get(ml.id) ?? false,
-  }))
 
-  const moduleTitle = lesson.modules?.title ?? 'Module'
+  // Group lessons under modules → CurriculumTree shape
+  const lessonsByModule = new Map<string, CourseLessonRow[]>()
+  for (const l of allLessons) {
+    const arr = lessonsByModule.get(l.module_id) ?? []
+    arr.push(l)
+    lessonsByModule.set(l.module_id, arr)
+  }
+
+  const curriculum: CurriculumModule[] = allModules
+    .sort((a, b) => a.position - b.position)
+    .map((m) => ({
+      id: m.id,
+      title: m.title,
+      position: m.position,
+      lessons: (lessonsByModule.get(m.id) ?? [])
+        .sort((a, b) => a.position - b.position)
+        .map((l) => ({
+          id: l.id,
+          title: l.title,
+          position: l.position,
+          duration_seconds: l.duration_seconds,
+          completed: progressMap.get(l.id) ?? false,
+        })),
+    }))
 
   return (
     <>
       <LessonExperience
         lesson={lesson}
         moduleTitle={moduleTitle}
+        courseTitle={courseTitle}
         resumePosition={resumePosition}
         isLessonComplete={isLessonComplete}
         clientQuestions={clientQuestions}
-        moduleLessons={moduleLessons}
+        curriculum={curriculum}
       />
-      {/* TutorPanel with lessonId context overlays the global layout panel */}
       <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
     </>
   )
