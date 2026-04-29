@@ -56,9 +56,16 @@ blocked: 3
   reason: "User reported: no, it doesnt unlock"
   severity: major
   test: 2
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "VideoPlayer.tsx saveProgress() calls /api/video/progress and upserts completed=true in DB but never triggers a page re-render. QuizSection receives isLessonComplete from SSR (frozen at page load) and stays locked. Fix: call router.refresh() in VideoPlayer after API confirms completed=true."
+  artifacts:
+    - path: "components/VideoPlayer.tsx"
+      issue: "saveProgress does not call router.refresh() after completed=true response"
+    - path: "app/dashboard/lesson/[lessonId]/page.tsx"
+      issue: "isLessonComplete computed once at SSR time (line 118), never refreshed"
+    - path: "components/QuizSection.tsx"
+      issue: "disabled={!isLessonComplete} at line 112; early return at line 62"
+  missing:
+    - "router.refresh() call in VideoPlayer after progress API returns completed=true"
   debug_session: ""
 
 - truth: "All 3 lesson pages show a quiz button (disabled or enabled depending on progress)"
@@ -66,7 +73,10 @@ blocked: 3
   reason: "User reported: modules 2 and 3 don't even show a quiz button"
   severity: major
   test: 2
-  root_cause: ""
-  artifacts: []
-  missing: []
+  root_cause: "supabase/seed.sql only seeds one quiz_definitions row (for lesson ...0030). Lessons ...0031 and ...0032 have no rows, so quizDef=null, clientQuestions=[], and the render gate {clientQuestions.length > 0 && ...} hides the entire QuizSection. No code change needed — only seed data."
+  artifacts:
+    - path: "supabase/seed.sql"
+      issue: "quiz_definitions only seeded for lesson 00000000-0000-0000-0000-000000000030 (lines 103-147)"
+  missing:
+    - "quiz_definitions rows for lesson IDs ...0031 and ...0032"
   debug_session: ""
