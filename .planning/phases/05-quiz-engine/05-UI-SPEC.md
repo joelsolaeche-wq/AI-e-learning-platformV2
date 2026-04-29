@@ -1,7 +1,8 @@
 ---
 phase: 5
 slug: quiz-engine
-status: draft
+status: approved
+reviewed_at: 2026-04-28
 shadcn_initialized: true
 preset: base-nova
 created: 2026-04-28
@@ -43,7 +44,9 @@ Identical to prior phases. No Phase 5 exceptions.
 | 2xl | 48px | Major section breaks |
 | 3xl | 64px | Page-level top/bottom padding |
 
-Exceptions: none for Phase 5.
+Exceptions:
+- `12px` (`gap-3`, `p-3`, `space-y-3`) — answer option row inner padding and gap; smaller than `md` (16px) to keep options compact without collapsing to `sm` (8px). Declared exception per design intent.
+- `32px` (`ml-8`) — left indent on correct-answer reveal text, aligning it past the 16px RadioGroupItem + 8px gap + 8px label offset.
 
 ---
 
@@ -272,12 +275,12 @@ The quiz section is appended below the transcript section, separated by a `<Sepa
 |------|---------------|
 | Score banner card | Full width, `<Card>` with `CardHeader` + `CardContent` |
 | Score banner header | "Quiz Results" (Display 24px semibold) + Pass/Fail badge — `flex items-center justify-between` |
-| Score number | `text-3xl font-semibold` — "{N} / {total}" large, pct% small beside it |
+| Score number | `text-2xl font-semibold` — "{N} / {total}" large, pct% small beside it |
 | Progress bar | `<Progress value={pct} className="h-2 mt-2">` below score number |
 | Per-question review section | Same question list, rendered below score banner, `space-y-4` |
 | Per-question answer options | Same layout as ACTIVE but `disabled` RadioGroup, with color overlays |
 | Correct/Incorrect label | Inline to the right of the option row, `text-xs` |
-| Correct answer reveal | Below the user's incorrect selection: `"Correct answer: {text}"` in `text-green-400 text-xs mt-1 ml-9` (indented past radio indicator) |
+| Correct answer reveal | Below the user's incorrect selection: `"Correct answer: {text}"` in `text-green-400 text-xs mt-1 ml-8` (indented past radio indicator, 32px) |
 | "Retake Quiz" button | Below last question review, right-aligned, `outline` variant |
 
 **Source:** QUIZ-03 success criteria layout description + lesson page layout from `app/dashboard/lesson/[lessonId]/page.tsx` + Phase 2 max-width 896px reading layout pattern.
@@ -304,12 +307,14 @@ npx shadcn add progress
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: all button labels, score format, error states, empty states declared
-- [ ] Dimension 2 Visuals: locked/active/submitted/results states specified with exact classes
-- [ ] Dimension 3 Color: correct=green-400/green-950, incorrect=destructive, selected=primary ring — no new tokens
-- [ ] Dimension 4 Typography: 4 sizes declared, 2 weights only, roles assigned
-- [ ] Dimension 5 Spacing: 8-point scale, all layout areas specified with token values
-- [ ] Dimension 6 Registry Safety: radio-group + progress from official registry only, vetting not required
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+
+**Approval:** approved 2026-04-28
 
 ---
 
