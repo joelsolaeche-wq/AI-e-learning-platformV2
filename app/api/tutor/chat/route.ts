@@ -63,26 +63,35 @@ export async function POST(request: Request) {
   const lessonRow = lesson as unknown as LessonRow
 
   // Explicit enrollment check: verify the user has an active enrollment in a
-  // cohort whose course contains this lesson's module.
-  const { data: enrollment } = await supabase
-    .from('enrollments')
-    .select('id')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .in(
-      'cohort_id',
-      supabase
-        .from('cohorts')
-        .select('id')
-        .in(
-          'course_id',
-          supabase
-            .from('modules')
-            .select('course_id')
-            .eq('id', lessonRow.module_id)
-        ) as never
-    )
+  // cohort whose course contains this lesson's module. Two-step lookup avoids
+  // the nested-subquery type issue with PostgREST 14.5.
+  type ModuleRow = { course_id: string }
+  const { data: moduleData } = await supabase
+    .from('modules')
+    .select('course_id')
+    .eq('id', lessonRow.module_id)
     .maybeSingle()
+  const courseId = (moduleData as unknown as ModuleRow | null)?.course_id ?? null
+
+  type CohortRow = { id: string }
+  const cohortIds: string[] = []
+  if (courseId) {
+    const { data: cohortData } = await supabase
+      .from('cohorts')
+      .select('id')
+      .eq('course_id', courseId)
+    cohortIds.push(...((cohortData ?? []) as unknown as CohortRow[]).map((r) => r.id))
+  }
+
+  const { data: enrollment } = cohortIds.length > 0
+    ? await supabase
+        .from('enrollments')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .in('cohort_id', cohortIds)
+        .maybeSingle()
+    : { data: null }
 
   if (!enrollment) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
