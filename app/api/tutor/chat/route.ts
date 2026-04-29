@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   }
 
   // Parse body
-  let body: { lessonId?: string; message?: string; sessionId?: string }
+  let body: { lessonId?: string; message?: string }
   try {
     body = await request.json()
   } catch {
