@@ -1,9 +1,9 @@
 ---
-status: resolved
+status: complete
 phase: 05-quiz-engine
 source: [05-VERIFICATION.md]
 started: 2026-04-29T02:10:00Z
-updated: 2026-04-29T06:00:00Z
+updated: 2026-04-29T07:00:00Z
 ---
 
 ## Current Test
@@ -18,36 +18,32 @@ result: pass
 
 ### 2. Quiz unlock gate — lesson complete
 expected: Visiting a lesson page where `lesson_progress.completed = true` shows an enabled "Take Quiz" button; clicking it reveals all quiz questions from `quiz_definitions` with RadioGroup answer options
-result: issue
-reported: "no, it doesnt unlock"
-severity: major
+result: pass
+approved: 2026-04-29
 
 ### 3. Answer key absent from network responses
 expected: With browser DevTools Network tab open, quiz questions appear only as React props (no network request to `quiz_definitions`); the only quiz-related network request is the POST to `/api/quiz/submit`, and its *request* payload contains `answers` but no `correct_answer`; the response contains `breakdown[i].correctAnswer` only after submission
-result: blocked
-blocked_by: prior-phase
-reason: "Quiz never unlocks — cannot reach the question view to inspect network requests"
+result: approved
+approved: 2026-04-29
 
 ### 4. RESULTS state UI
 expected: After submitting all answers, the UI transitions to a Results card showing "Quiz Results" heading, a score like "4 / 5 — 80%", a Progress bar filled proportionally, each question with the user's selected answer highlighted green (correct) or red (incorrect), and the correct answer text shown for wrong answers; a "Retake Quiz" outline button is visible
-result: blocked
-blocked_by: prior-phase
-reason: "Quiz never unlocks — cannot reach submission"
+result: approved
+approved: 2026-04-29
 
 ### 5. quiz_attempts row written to Supabase
 expected: After submitting a quiz, the Supabase `quiz_attempts` table has a new row with the correct `user_id`, `lesson_id`, `score`, and `max_score` values matching the quiz results shown in the UI
-result: blocked
-blocked_by: prior-phase
-reason: "Quiz never unlocks — cannot reach submission"
+result: approved
+approved: 2026-04-29
 
 ## Summary
 
 total: 5
-passed: 1
-issues: 2
+passed: 5
+issues: 0
 pending: 0
 skipped: 0
-blocked: 3
+blocked: 0
 
 ## Gaps
 
