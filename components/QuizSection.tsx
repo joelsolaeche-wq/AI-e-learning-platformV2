@@ -1,302 +1,158 @@
+// components/QuizSection.tsx
 'use client'
 
 import { useState } from 'react'
-import { Lock } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardContent } from '@/components/ui/card'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Progress } from '@/components/ui/progress'
+import { Check, X, ChevronRight, Trophy, RotateCcw } from 'lucide-react'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type QuizState = 'LOCKED' | 'ACTIVE' | 'SUBMITTED' | 'RESULTS'
-
-type ClientQuestion = {
+interface QuizQuestion {
   id: string
-  question: string
-  options: string[]
-}
-
-type QuestionBreakdown = {
-  questionId: string
-  question: string
-  options: string[]
-  selectedAnswer: string | null
-  correctAnswer: string
-  correct: boolean
-}
-
-type QuizResults = {
-  score: number
-  total: number
-  pct: number
-  breakdown: QuestionBreakdown[]
+  prompt: string
+  options: { id: string; text: string }[]
+  correct_option_id: string
+  explanation?: string
 }
 
 interface QuizSectionProps {
-  isLessonComplete: boolean
-  clientQuestions: ClientQuestion[]
+  questions: QuizQuestion[]
   lessonId: string
+  onComplete?: (score: number) => void
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+export function QuizSection({ questions, lessonId, onComplete }: QuizSectionProps) {
+  const [idx, setIdx] = useState(0)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState(false)
+  const [score, setScore] = useState(0)
+  const [done, setDone] = useState(false)
 
-export function QuizSection({ isLessonComplete, clientQuestions, lessonId }: QuizSectionProps) {
-  // Always start at LOCKED — user explicitly clicks "Take Quiz" to begin.
-  // When isLessonComplete=true, the button renders enabled but questions are not shown yet.
-  // Pitfall 3 from RESEARCH.md: do NOT initialize to ACTIVE when lesson is complete.
-  const [quizState, setQuizState] = useState<QuizState>('LOCKED')
-  const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [results, setResults] = useState<QuizResults | null>(null)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-
-  const allAnswered =
-    clientQuestions.length > 0 && clientQuestions.every((q) => answers[q.id])
-
-  const handleStart = () => {
-    if (!isLessonComplete) return
-    setQuizState('ACTIVE')
+  if (!questions || questions.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+        No quiz available for this lesson yet.
+      </div>
+    )
   }
 
-  const handleAnswerChange = (questionId: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [questionId]: value }))
+  if (done) {
+    const pct = Math.round((score / questions.length) * 100)
+    return (
+      <div className="rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/[0.12] to-accent/[0.06] p-10 text-center">
+        <Trophy size={40} className="mx-auto mb-3 text-primary drop-shadow-[0_0_16px_hsl(var(--primary))]" />
+        <div className="text-[28px] font-bold tracking-tight">{score}/{questions.length} correct</div>
+        <div className="mt-1 text-[13px] text-muted-foreground">
+          {pct >= 80 ? '🎉 Nailed it — +50 XP earned' : 'Keep going — review and retry to lock it in.'}
+        </div>
+        <button
+          onClick={() => { setIdx(0); setPicked(null); setRevealed(false); setScore(0); setDone(false) }}
+          className="mt-5 inline-flex items-center gap-2 rounded-[10px] border border-border bg-card px-4 py-2 text-[13px] font-semibold hover:bg-secondary"
+        >
+          <RotateCcw size={13} /> Retry
+        </button>
+      </div>
+    )
   }
 
-  const handleSubmit = async () => {
-    if (!allAnswered) return
-    setQuizState('SUBMITTED')
-    setSubmitError(null)
-    try {
-      const res = await fetch('/api/quiz/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lessonId, answers }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        const msg =
-          res.status === 403
-            ? (body.error ?? 'Complete the lesson before submitting the quiz.')
-            : res.status === 404
-            ? 'Quiz not found.'
-            : "Couldn't submit quiz — try again."
-        throw new Error(msg)
-      }
-      const data: QuizResults = await res.json()
-      setResults(data)
-      setQuizState('RESULTS')
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Couldn't submit quiz — try again")
-      setQuizState('ACTIVE')
+  const q = questions[idx]
+  const isCorrect = picked === q.correct_option_id
+
+  function submit() {
+    if (!picked || revealed) return
+    setRevealed(true)
+    if (isCorrect) setScore((s) => s + 1)
+  }
+  function next() {
+    if (idx + 1 >= questions.length) {
+      setDone(true)
+      onComplete?.(score + (isCorrect ? 0 : 0))
+    } else {
+      setIdx(idx + 1)
+      setPicked(null)
+      setRevealed(false)
     }
   }
 
-  const handleRetake = () => {
-    setAnswers({})
-    setResults(null)
-    setSubmitError(null)
-    setQuizState('ACTIVE')
-  }
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          Question {idx + 1} of {questions.length}
+        </div>
+        <div className="h-1.5 w-32 overflow-hidden rounded-full bg-white/[0.08]">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-500"
+            style={{ width: `${((idx + (revealed ? 1 : 0)) / questions.length) * 100}%` }}
+          />
+        </div>
+      </div>
 
-  // ---------------------------------------------------------------------------
-  // LOCKED state
-  // ---------------------------------------------------------------------------
-  if (quizState === 'LOCKED') {
-    return (
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Post-Lesson Quiz</h2>
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-10 gap-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Lock size={16} />
-              <span className="text-sm">Complete the lesson to unlock the quiz</span>
-            </div>
-            <Button
-              onClick={handleStart}
-              disabled={!isLessonComplete}
+      <div className="mb-6 text-[20px] font-semibold leading-[1.3] tracking-[-0.01em]">{q.prompt}</div>
+
+      <div className="flex flex-col gap-2.5">
+        {q.options.map((opt) => {
+          const isPicked = picked === opt.id
+          const isRight = revealed && opt.id === q.correct_option_id
+          const isWrongPick = revealed && isPicked && !isRight
+          return (
+            <button
+              key={opt.id}
+              disabled={revealed}
+              onClick={() => setPicked(opt.id)}
+              className={[
+                'group relative flex items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-[14px] transition-all',
+                isRight
+                  ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-200'
+                  : isWrongPick
+                  ? 'border-rose-400/50 bg-rose-400/10 text-rose-200'
+                  : isPicked
+                  ? 'border-primary/50 bg-primary/[0.10] text-foreground'
+                  : 'border-border bg-secondary/40 text-foreground hover:border-white/15 hover:bg-secondary',
+              ].join(' ')}
             >
-              Take Quiz
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-    )
-  }
+              <span
+                className={[
+                  'grid h-6 w-6 flex-shrink-0 place-items-center rounded-md border text-[11px] font-bold transition-all',
+                  isRight
+                    ? 'border-emerald-400 bg-emerald-400 text-emerald-950'
+                    : isWrongPick
+                    ? 'border-rose-400 bg-rose-400 text-rose-950'
+                    : isPicked
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-card text-muted-foreground',
+                ].join(' ')}
+              >
+                {isRight ? <Check size={12} /> : isWrongPick ? <X size={12} /> : opt.id.toUpperCase().slice(0, 1)}
+              </span>
+              <span>{opt.text}</span>
+            </button>
+          )
+        })}
+      </div>
 
-  // ---------------------------------------------------------------------------
-  // ACTIVE state
-  // ---------------------------------------------------------------------------
-  if (quizState === 'ACTIVE') {
-    return (
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Post-Lesson Quiz</h2>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <span className="text-lg font-semibold">Questions</span>
-            <span className="text-xs text-muted-foreground">
-              {Object.keys(answers).length} of {clientQuestions.length} answered
-            </span>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {clientQuestions.map((q, idx) => (
-              <div key={q.id} className="space-y-3">
-                <p className="text-xs text-muted-foreground">Question {idx + 1} of {clientQuestions.length}</p>
-                <p className="text-lg font-semibold">{q.question}</p>
-                <RadioGroup
-                  value={answers[q.id] ?? ''}
-                  onValueChange={(val: string) => handleAnswerChange(q.id, val)}
-                  className="flex flex-col gap-2"
-                >
-                  {q.options.map((option) => (
-                    <label
-                      key={option}
-                      className={[
-                        'flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors',
-                        answers[q.id] === option
-                          ? 'border-primary ring-1 ring-primary/30 bg-card'
-                          : 'border-border bg-card hover:bg-muted',
-                      ].join(' ')}
-                    >
-                      <RadioGroupItem value={option} />
-                      <span className="text-sm flex-1">{option}</span>
-                    </label>
-                  ))}
-                </RadioGroup>
-              </div>
-            ))}
+      {revealed && q.explanation && (
+        <div className="mt-4 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-3 text-[13px] leading-[1.55] text-foreground/90">
+          <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.1em] text-primary">Why</div>
+          {q.explanation}
+        </div>
+      )}
 
-            {!allAnswered && (
-              <p className="text-xs text-muted-foreground mt-1">Answer all questions to submit</p>
-            )}
-            {submitError && (
-              <p className="text-xs text-destructive mb-1">{submitError}</p>
-            )}
-
-            <Button
-              className="w-full"
-              onClick={handleSubmit}
-              disabled={!allAnswered}
-            >
-              Submit Quiz
-            </Button>
-          </CardContent>
-        </Card>
-      </section>
-    )
-  }
-
-  // ---------------------------------------------------------------------------
-  // SUBMITTED state (optimistic loading)
-  // ---------------------------------------------------------------------------
-  if (quizState === 'SUBMITTED') {
-    return (
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Post-Lesson Quiz</h2>
-        <Card>
-          <CardContent className="flex items-center justify-center py-10">
-            <Button disabled className="w-full">Submitting...</Button>
-          </CardContent>
-        </Card>
-      </section>
-    )
-  }
-
-  // ---------------------------------------------------------------------------
-  // RESULTS state
-  // ---------------------------------------------------------------------------
-  if (quizState === 'RESULTS' && results) {
-    const passed = results.pct >= 70
-    return (
-      <section className="space-y-6">
-        <h2 className="text-lg font-semibold">Post-Lesson Quiz</h2>
-
-        {/* Score banner */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <span className="text-2xl font-semibold">Quiz Results</span>
-            <Badge variant={passed ? 'secondary' : 'outline'}>
-              {passed ? 'Passed' : 'Review required'}
-            </Badge>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className={passed ? 'text-2xl font-semibold text-primary' : 'text-2xl font-semibold text-muted-foreground'}>
-              {results.score} / {results.total} — {results.pct}%
-            </p>
-            {/* WR-04: className targets the Root wrapper; use trackClassName for the bar height */}
-            <Progress value={results.pct} className="mt-2" trackClassName="h-2" />
-          </CardContent>
-        </Card>
-
-        {/* Per-question review */}
-        <Card>
-          <CardContent className="space-y-6 pt-6">
-            {results.breakdown.map((item, idx) => (
-              <div key={item.questionId} className="space-y-3">
-                <p className="text-xs text-muted-foreground">Question {idx + 1} of {results.total}</p>
-                <p className="text-lg font-semibold">{item.question}</p>
-                <RadioGroup
-                  value={item.selectedAnswer ?? ''}
-                  disabled
-                  className="flex flex-col gap-2"
-                >
-                  {item.options.map((option) => {
-                    const isSelected = option === item.selectedAnswer
-                    const isCorrect = option === item.correctAnswer
-
-                    let rowClass = 'flex items-center gap-3 p-3 rounded-md border'
-                    if (isSelected && item.correct) {
-                      // User selected correct answer
-                      rowClass += ' text-green-400 border-green-500/50 bg-green-950/30'
-                    } else if (isSelected && !item.correct) {
-                      // User selected wrong answer
-                      rowClass += ' text-destructive border-destructive/50 bg-destructive/10'
-                    } else {
-                      rowClass += ' border-border bg-card opacity-60'
-                    }
-
-                    return (
-                      <div key={option}>
-                        <label className={rowClass}>
-                          <RadioGroupItem value={option} disabled />
-                          <span className="text-sm flex-1">{option}</span>
-                          {isSelected && (
-                            <span className={item.correct ? 'text-green-400 text-xs' : 'text-destructive text-xs'}>
-                              {item.correct ? 'Correct' : 'Incorrect'}
-                            </span>
-                          )}
-                        </label>
-                        {/* Show correct answer label on the correct option when user got it wrong.
-                            WR-01: The block above (isSelected && !item.correct && isCorrect) was
-                            unreachable — if the user selected this option and got it wrong,
-                            isCorrect is false for the selected (wrong) option. Removed. */}
-                        {!isSelected && isCorrect && !item.correct && (
-                          <p className="text-green-400 text-xs mt-1 ml-8">
-                            Correct answer: {option}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })}
-                </RadioGroup>
-              </div>
-            ))}
-
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={handleRetake}>
-                Retake Quiz
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-    )
-  }
-
-  // Fallback (should not be reachable)
-  return null
+      <div className="mt-5 flex justify-end">
+        {!revealed ? (
+          <button
+            disabled={!picked}
+            onClick={submit}
+            className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-5 py-2.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0"
+          >
+            Submit answer
+          </button>
+        ) : (
+          <button
+            onClick={next}
+            className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-5 py-2.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
+          >
+            {idx + 1 >= questions.length ? 'See results' : 'Next question'} <ChevronRight size={14} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
