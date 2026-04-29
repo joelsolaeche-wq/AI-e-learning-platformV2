@@ -97,13 +97,16 @@ export default async function LessonPage({ params }: LessonPageProps) {
 
       if (!sessionData) return []
 
-      const { data: messagesData } = await supabase
+      const { data: messagesData, error: msgsError } = await supabase
         .from('ai_chat_messages')
         .select('id, role, content, created_at')
         .eq('session_id', (sessionData as unknown as { id: string }).id)
         .order('created_at', { ascending: true })
         .limit(20)
 
+      if (msgsError) {
+        console.error('[lesson page] ai_chat_messages fetch error', msgsError)
+      }
       return (messagesData ?? []) as unknown as ChatMessageRow[]
     })(),
   ])
