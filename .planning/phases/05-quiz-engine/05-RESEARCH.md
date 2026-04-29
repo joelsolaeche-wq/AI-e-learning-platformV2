@@ -626,7 +626,7 @@ Step 2.6: SKIPPED — Phase 5 is a code-only change. No new external services, C
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should quiz questions be shown for lessons 2 and 3?**
    - What we know: seed data only has a `quiz_definitions` row for lesson 1. Lessons 2 and 3 have no quiz.
