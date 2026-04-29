@@ -1,44 +1,72 @@
 ---
-status: partial
+status: complete
 phase: 05-quiz-engine
 source: [05-VERIFICATION.md]
 started: 2026-04-29T02:10:00Z
-updated: 2026-04-29T02:10:00Z
+updated: 2026-04-29T00:00:00Z
 ---
 
 ## Current Test
 
-[awaiting human testing]
+[testing complete]
 
 ## Tests
 
 ### 1. Quiz unlock gate — lesson incomplete
 expected: Visiting a lesson page where `lesson_progress.completed = false` shows a "Take Quiz" button that is disabled (greyed out) with a Lock icon and the text "Complete the lesson to unlock the quiz"
-result: [pending]
+result: pass
 
 ### 2. Quiz unlock gate — lesson complete
 expected: Visiting a lesson page where `lesson_progress.completed = true` shows an enabled "Take Quiz" button; clicking it reveals all quiz questions from `quiz_definitions` with RadioGroup answer options
-result: [pending]
+result: issue
+reported: "no, it doesnt unlock"
+severity: major
 
 ### 3. Answer key absent from network responses
 expected: With browser DevTools Network tab open, quiz questions appear only as React props (no network request to `quiz_definitions`); the only quiz-related network request is the POST to `/api/quiz/submit`, and its *request* payload contains `answers` but no `correct_answer`; the response contains `breakdown[i].correctAnswer` only after submission
-result: [pending]
+result: blocked
+blocked_by: prior-phase
+reason: "Quiz never unlocks — cannot reach the question view to inspect network requests"
 
 ### 4. RESULTS state UI
 expected: After submitting all answers, the UI transitions to a Results card showing "Quiz Results" heading, a score like "4 / 5 — 80%", a Progress bar filled proportionally, each question with the user's selected answer highlighted green (correct) or red (incorrect), and the correct answer text shown for wrong answers; a "Retake Quiz" outline button is visible
-result: [pending]
+result: blocked
+blocked_by: prior-phase
+reason: "Quiz never unlocks — cannot reach submission"
 
 ### 5. quiz_attempts row written to Supabase
 expected: After submitting a quiz, the Supabase `quiz_attempts` table has a new row with the correct `user_id`, `lesson_id`, `score`, and `max_score` values matching the quiz results shown in the UI
-result: [pending]
+result: blocked
+blocked_by: prior-phase
+reason: "Quiz never unlocks — cannot reach submission"
 
 ## Summary
 
 total: 5
-passed: 0
-issues: 0
-pending: 5
+passed: 1
+issues: 2
+pending: 0
 skipped: 0
-blocked: 0
+blocked: 3
 
 ## Gaps
+
+- truth: "When lesson_progress.completed = true, the Take Quiz button is enabled and quiz questions are revealed"
+  status: failed
+  reason: "User reported: no, it doesnt unlock"
+  severity: major
+  test: 2
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
+
+- truth: "All 3 lesson pages show a quiz button (disabled or enabled depending on progress)"
+  status: failed
+  reason: "User reported: modules 2 and 3 don't even show a quiz button"
+  severity: major
+  test: 2
+  root_cause: ""
+  artifacts: []
+  missing: []
+  debug_session: ""
