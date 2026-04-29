@@ -1,11 +1,16 @@
 // app/dashboard/achievements/page.tsx
+// Every achievement state is derived from real Supabase rows:
+//   - lesson_progress (count, dates, day grouping) → progression badges + streaks
+//   - quiz_attempts (perfect-score count) → mastery badges
+//   - enrollments (course / module completion) → builder badges
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Ring } from '@/components/ui/Ring'
 import {
   Trophy, Flame, Zap, Target, BookOpen, Award, Brain, Sparkles,
-  Crown, Lock, Shield, Cpu, GitBranch, MessageSquare, Calendar,
+  Crown, Lock, Shield, Cpu, GitBranch, CheckCircle2, Clock,
 } from 'lucide-react'
+import { getLearnerStats, XP_PER_LESSON, XP_PER_PERFECT_QUIZ } from '@/lib/learner-stats'
 
 type Tier = 'bronze' | 'silver' | 'gold' | 'platinum'
 type Category = 'Learning' | 'Streak' | 'Mastery' | 'Builder' | 'Cohort'
@@ -20,7 +25,7 @@ interface Achievement {
   xp: number
   earned: boolean
   earnedAt?: string | null
-  progress?: number   // 0-100, only when locked
+  progress?: number          // 0-100
   progressLabel?: string
 }
 
@@ -36,156 +41,234 @@ function fmtDate(iso: string | null | undefined): string | null {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function pctOrNone(value: number, target: number): number {
+  if (target <= 0) return 0
+  return Math.min(100, Math.round((value / target) * 100))
+}
+
+// Match courses by slug/title against AI-domain keywords
+type CourseMatch = (slug: string, title: string) => boolean
+function courseMatches(courseList: { slug: string; title: string }[], match: CourseMatch): boolean {
+  return courseList.some((c) => match(c.slug.toLowerCase(), c.title.toLowerCase()))
+}
+
 export default async function AchievementsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Real data: lesson progress, quizzes, enrollments
-  const [progressResult, quizResult, enrollmentsResult] = await Promise.all([
-    supabase.from('lesson_progress')
-      .select('lesson_id, completed, completed_at')
+  // All real queries
+  const [stats, completedRowsResult, perfectFirstResult, enrollmentsResult] = await Promise.all([
+    getLearnerStats(supabase, user.id),
+    supabase
+      .from('lesson_progress')
+      .select('lesson_id, completed_at')
       .eq('user_id', user.id)
-      .eq('completed', true),
-    supabase.from('quiz_attempts')
+      .eq('completed', true)
+      .order('completed_at', { ascending: true })
+      .limit(1),
+    supabase
+      .from('quiz_attempts')
       .select('score, max_score, submitted_at')
-      .eq('user_id', user.id),
-    supabase.from('enrollments')
-      .select('cohort_id, enrolled_at')
+      .eq('user_id', user.id)
+      .order('submitted_at', { ascending: true }),
+    supabase
+      .from('enrollments')
+      .select(`id, enrolled_at, status, cohort_id,
+               cohorts(course_id, courses(id, slug, title))`)
       .eq('user_id', user.id),
   ])
 
-  type LP = { lesson_id: string; completed: boolean; completed_at: string | null }
-  type QA = { score: number; max_score: number; submitted_at: string }
-  const completions = (progressResult.data ?? []) as LP[]
-  const quizzes = (quizResult.data ?? []) as QA[]
+  type ProgressDateRow = { lesson_id: string; completed_at: string | null }
+  const firstCompletion = ((completedRowsResult.data ?? []) as ProgressDateRow[])[0]?.completed_at ?? null
 
-  const totalCompleted = completions.length
-  const enrollmentsCount = (enrollmentsResult.data ?? []).length
+  type QuizDateRow = { score: number; max_score: number; submitted_at: string }
+  const allQuizzes = (perfectFirstResult.data ?? []) as QuizDateRow[]
+  const firstPerfect = allQuizzes.find((q) => q.max_score > 0 && q.score === q.max_score)?.submitted_at ?? null
 
-  // Find max lessons in a single day (for "Quick Learner")
-  const byDate = new Map<string, number>()
-  for (const c of completions) {
-    if (!c.completed_at) continue
-    const d = c.completed_at.slice(0, 10)
-    byDate.set(d, (byDate.get(d) ?? 0) + 1)
+  type EnrollmentJoined = {
+    id: string
+    enrolled_at: string
+    status: string
+    cohort_id: string
+    cohorts: {
+      course_id: string
+      courses: { id: string; slug: string; title: string } | null
+    } | null
   }
-  const maxLessonsInDay = byDate.size > 0 ? Math.max(...byDate.values()) : 0
+  const enrollments = (enrollmentsResult.data ?? []) as unknown as EnrollmentJoined[]
+  const earliestEnrollment = enrollments
+    .map((e) => e.enrolled_at)
+    .sort()[0] ?? null
+  const enrolledCourses = enrollments
+    .map((e) => e.cohorts?.courses)
+    .filter((c): c is { id: string; slug: string; title: string } => Boolean(c))
 
-  // Most recent completion → "earnedAt" for first-prompt badges
-  const sortedCompletions = [...completions]
-    .filter((c) => c.completed_at)
-    .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''))
-  const firstCompletion = sortedCompletions[sortedCompletions.length - 1]?.completed_at ?? null
+  // Determine which courses are 100% complete
+  const courseIds = enrolledCourses.map((c) => c.id)
+  const completedCourses: { slug: string; title: string }[] = []
 
-  // Quiz stats
-  const perfectQuizzes = quizzes.filter((q) => q.max_score > 0 && q.score === q.max_score)
-  const firstPerfectAt = perfectQuizzes.length > 0
-    ? [...perfectQuizzes].sort((a, b) => a.submitted_at.localeCompare(b.submitted_at))[0].submitted_at
-    : null
+  if (courseIds.length > 0) {
+    type ModuleRow = { id: string; course_id: string }
+    const { data: rawModuleData } = await supabase
+      .from('modules')
+      .select('id, course_id')
+      .in('course_id', courseIds)
+    const moduleData = (rawModuleData ?? []) as unknown as ModuleRow[]
+    const moduleIds = moduleData.map((m) => m.id)
+    const moduleToCourse = new Map(moduleData.map((m) => [m.id, m.course_id]))
 
-  // Streak — approximated for demo (in production, derive from daily activity)
-  const streakDays = 7
+    if (moduleIds.length > 0) {
+      const { data: lessonsData } = await supabase
+        .from('lessons')
+        .select('id, module_id')
+        .in('module_id', moduleIds)
+      type LessonRow = { id: string; module_id: string }
+      const lessonsByCourse = new Map<string, string[]>()
+      for (const l of (lessonsData ?? []) as LessonRow[]) {
+        const c = moduleToCourse.get(l.module_id)
+        if (!c) continue
+        const arr = lessonsByCourse.get(c) ?? []
+        arr.push(l.id)
+        lessonsByCourse.set(c, arr)
+      }
 
+      const { data: progressRows } = await supabase
+        .from('lesson_progress')
+        .select('lesson_id')
+        .eq('user_id', user.id)
+        .eq('completed', true)
+      const completedSet = new Set<string>(
+        ((progressRows ?? []) as { lesson_id: string }[]).map((r) => r.lesson_id),
+      )
+
+      for (const c of enrolledCourses) {
+        const lessonIds = lessonsByCourse.get(c.id) ?? []
+        if (lessonIds.length > 0 && lessonIds.every((id) => completedSet.has(id))) {
+          completedCourses.push({ slug: c.slug, title: c.title })
+        }
+      }
+    }
+  }
+
+  // AI-domain badge predicates — match against real course slugs/titles
+  const completedRag = courseMatches(completedCourses, (s, t) =>
+    s.includes('rag') || t.includes('rag') || t.includes('retrieval'))
+  const completedAgents = courseMatches(completedCourses, (s, t) =>
+    s.includes('agent') || t.includes('agent'))
+  const completedFinetune = courseMatches(completedCourses, (s, t) =>
+    s.includes('fine-tune') || s.includes('finetune') || t.includes('fine-tune') || t.includes('finetune'))
+
+  // Build the achievements list — ALL fields derived from real data
   const achievements: Achievement[] = [
     // Learning milestones
     {
       id: 'first-prompt', Icon: Sparkles, category: 'Learning', tier: 'bronze',
       label: 'First Prompt', desc: 'Complete your first lesson', xp: 50,
-      earned: totalCompleted >= 1, earnedAt: firstCompletion,
-      progress: totalCompleted >= 1 ? undefined : 0,
+      earned: stats.totalLessonsCompleted >= 1, earnedAt: firstCompletion,
     },
     {
       id: 'token-master', Icon: Cpu, category: 'Learning', tier: 'bronze',
       label: 'Token Master', desc: 'Complete 10 lessons', xp: 150,
-      earned: totalCompleted >= 10,
-      progress: totalCompleted >= 10 ? undefined : Math.min(100, (totalCompleted / 10) * 100),
-      progressLabel: `${Math.min(totalCompleted, 10)} / 10`,
+      earned: stats.totalLessonsCompleted >= 10,
+      progress: stats.totalLessonsCompleted >= 10 ? undefined : pctOrNone(stats.totalLessonsCompleted, 10),
+      progressLabel: `${Math.min(stats.totalLessonsCompleted, 10)} / 10 lessons`,
     },
     {
       id: 'context-window', Icon: Brain, category: 'Learning', tier: 'silver',
       label: 'Context Window', desc: 'Complete 50 lessons', xp: 400,
-      earned: totalCompleted >= 50,
-      progress: totalCompleted >= 50 ? undefined : Math.min(100, (totalCompleted / 50) * 100),
-      progressLabel: `${Math.min(totalCompleted, 50)} / 50`,
+      earned: stats.totalLessonsCompleted >= 50,
+      progress: stats.totalLessonsCompleted >= 50 ? undefined : pctOrNone(stats.totalLessonsCompleted, 50),
+      progressLabel: `${Math.min(stats.totalLessonsCompleted, 50)} / 50 lessons`,
     },
     {
       id: 'long-context', Icon: Award, category: 'Learning', tier: 'gold',
       label: '100k Context', desc: 'Complete 100 lessons', xp: 1000,
-      earned: totalCompleted >= 100,
-      progress: totalCompleted >= 100 ? undefined : Math.min(100, (totalCompleted / 100) * 100),
-      progressLabel: `${Math.min(totalCompleted, 100)} / 100`,
+      earned: stats.totalLessonsCompleted >= 100,
+      progress: stats.totalLessonsCompleted >= 100 ? undefined : pctOrNone(stats.totalLessonsCompleted, 100),
+      progressLabel: `${Math.min(stats.totalLessonsCompleted, 100)} / 100 lessons`,
     },
 
-    // Streaks
+    // Streaks (computed from real activity dates)
     {
       id: 'streak-7', Icon: Flame, category: 'Streak', tier: 'bronze',
       label: '7-Day Streak', desc: 'Learn 7 days in a row', xp: 100,
-      earned: streakDays >= 7,
-      earnedAt: streakDays >= 7 ? new Date().toISOString() : null,
+      earned: stats.currentStreakDays >= 7 || stats.longestStreakDays >= 7,
+      progress: (stats.currentStreakDays >= 7 || stats.longestStreakDays >= 7)
+        ? undefined : pctOrNone(Math.max(stats.currentStreakDays, stats.longestStreakDays), 7),
+      progressLabel: `${Math.max(stats.currentStreakDays, stats.longestStreakDays)} / 7 days`,
     },
     {
       id: 'streak-30', Icon: Flame, category: 'Streak', tier: 'gold',
       label: 'Marathon', desc: 'Learn 30 days in a row', xp: 750,
-      earned: streakDays >= 30,
-      progress: streakDays >= 30 ? undefined : Math.min(100, (streakDays / 30) * 100),
-      progressLabel: `${streakDays} / 30 days`,
+      earned: stats.longestStreakDays >= 30,
+      progress: stats.longestStreakDays >= 30
+        ? undefined : pctOrNone(stats.longestStreakDays, 30),
+      progressLabel: `${stats.longestStreakDays} / 30 days`,
     },
     {
       id: 'speed-runner', Icon: Zap, category: 'Streak', tier: 'silver',
       label: 'Speed Runner', desc: '5 lessons in a single day', xp: 200,
-      earned: maxLessonsInDay >= 5,
-      progress: maxLessonsInDay >= 5 ? undefined : Math.min(100, (maxLessonsInDay / 5) * 100),
-      progressLabel: `${maxLessonsInDay} / 5 today`,
+      earned: stats.maxLessonsInOneDay >= 5,
+      progress: stats.maxLessonsInOneDay >= 5
+        ? undefined : pctOrNone(stats.maxLessonsInOneDay, 5),
+      progressLabel: `Best day: ${stats.maxLessonsInOneDay} lesson${stats.maxLessonsInOneDay !== 1 ? 's' : ''}`,
     },
 
-    // Quiz mastery
+    // Mastery
     {
       id: 'first-perfect', Icon: Target, category: 'Mastery', tier: 'bronze',
       label: 'Perfect Score', desc: 'Ace your first quiz', xp: 75,
-      earned: perfectQuizzes.length >= 1, earnedAt: firstPerfectAt,
+      earned: stats.perfectQuizzes >= 1, earnedAt: firstPerfect,
     },
     {
       id: 'quiz-master', Icon: Crown, category: 'Mastery', tier: 'silver',
       label: 'Quiz Master', desc: '10 perfect quiz scores', xp: 350,
-      earned: perfectQuizzes.length >= 10,
-      progress: perfectQuizzes.length >= 10 ? undefined : Math.min(100, (perfectQuizzes.length / 10) * 100),
-      progressLabel: `${perfectQuizzes.length} / 10`,
+      earned: stats.perfectQuizzes >= 10,
+      progress: stats.perfectQuizzes >= 10 ? undefined : pctOrNone(stats.perfectQuizzes, 10),
+      progressLabel: `${stats.perfectQuizzes} / 10 perfect`,
     },
 
-    // Builder achievements (AI-specific)
+    // Builder (matched against real completed-course slugs)
     {
       id: 'rag-architect', Icon: GitBranch, category: 'Builder', tier: 'gold',
-      label: 'RAG Architect', desc: 'Finish a RAG systems course', xp: 600,
-      earned: false, progress: 22, progressLabel: 'In progress',
+      label: 'RAG Architect', desc: 'Finish a RAG / retrieval course', xp: 600,
+      earned: completedRag,
+      progressLabel: completedRag ? undefined : 'Complete a RAG course to unlock',
     },
     {
       id: 'agent-engineer', Icon: Cpu, category: 'Builder', tier: 'gold',
-      label: 'Agent Engineer', desc: 'Ship an agentic workflow project', xp: 600,
-      earned: false, progress: 0, progressLabel: 'Locked — finish AI Foundations first',
+      label: 'Agent Engineer', desc: 'Finish an agentic-workflow course', xp: 600,
+      earned: completedAgents,
+      progressLabel: completedAgents ? undefined : 'Complete an agents course to unlock',
     },
     {
       id: 'fine-tuner', Icon: Shield, category: 'Builder', tier: 'platinum',
-      label: 'Fine-Tuner', desc: 'Train and deploy a custom model', xp: 1500,
-      earned: false, progressLabel: 'Capstone project required',
+      label: 'Fine-Tuner', desc: 'Complete a fine-tuning course', xp: 1500,
+      earned: completedFinetune,
+      progressLabel: completedFinetune ? undefined : 'Complete a fine-tuning course to unlock',
     },
 
     // Cohort
     {
       id: 'cohort-joined', Icon: BookOpen, category: 'Cohort', tier: 'bronze',
       label: 'Cohort Member', desc: 'Join your first cohort', xp: 50,
-      earned: enrollmentsCount >= 1,
-      earnedAt: enrollmentsCount >= 1 ? null : null,
+      earned: enrollments.length >= 1, earnedAt: earliestEnrollment,
     },
     {
-      id: 'pair-programmer', Icon: MessageSquare, category: 'Cohort', tier: 'silver',
-      label: 'Pair Programmer', desc: 'Help a teammate in office hours', xp: 200,
-      earned: false, progressLabel: 'Coming soon',
+      id: 'multi-cohort', Icon: Trophy, category: 'Cohort', tier: 'silver',
+      label: 'Multi-Cohort', desc: 'Enroll in 2 or more cohorts', xp: 200,
+      earned: enrollments.length >= 2,
+      progress: enrollments.length >= 2 ? undefined : pctOrNone(enrollments.length, 2),
+      progressLabel: `${enrollments.length} / 2 cohorts joined`,
     },
     {
-      id: 'cohort-champion', Icon: Trophy, category: 'Cohort', tier: 'gold',
-      label: 'Cohort Champion', desc: 'Finish top 3 in your cohort', xp: 800,
-      earned: false, progress: 62, progressLabel: 'Currently 3rd place',
+      id: 'foundation', Icon: CheckCircle2, category: 'Cohort', tier: 'gold',
+      label: 'Foundation Builder', desc: 'Finish any course end-to-end', xp: 500,
+      earned: completedCourses.length >= 1,
+      progressLabel: completedCourses.length >= 1
+        ? `${completedCourses.length} course${completedCourses.length !== 1 ? 's' : ''} completed`
+        : 'Finish a course to unlock',
     },
   ]
 
@@ -193,16 +276,15 @@ export default async function AchievementsPage() {
   const totalXP = achievements.filter((a) => a.earned).reduce((s, a) => s + a.xp, 0)
   const overallPct = Math.floor((earnedCount / achievements.length) * 100)
 
-  // Group by category for sectioned grid
   const categories: Category[] = ['Learning', 'Streak', 'Mastery', 'Builder', 'Cohort']
   const grouped = categories.map((cat) => ({
     category: cat,
     items: achievements.filter((a) => a.category === cat),
   }))
 
-  // Recent unlocks: earned achievements with timestamps
+  // Recently unlocked (real timestamps only)
   const recentUnlocks = achievements
-    .filter((a) => a.earned)
+    .filter((a) => a.earned && a.earnedAt)
     .sort((a, b) => (b.earnedAt ?? '').localeCompare(a.earnedAt ?? ''))
     .slice(0, 4)
 
@@ -221,44 +303,40 @@ export default async function AchievementsPage() {
               <br />Keep shipping.
             </h1>
             <p className="text-[14px] text-muted-foreground max-w-[480px]">
-              Earn badges for completing lessons, mastering quizzes, and shipping AI projects with your cohort.
+              Earn badges for completing lessons, mastering quizzes, and finishing AI courses end-to-end.
             </p>
           </div>
 
-          {/* Progress ring + XP */}
           <div className="flex items-center gap-6">
-            <div className="flex flex-col items-center gap-1.5">
-              <Ring pct={overallPct} size={108} stroke={9}>
-                <div className="text-center">
-                  <div className="text-[22px] font-bold leading-none">{overallPct}%</div>
-                  <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">complete</div>
-                </div>
-              </Ring>
-            </div>
+            <Ring pct={overallPct} size={108} stroke={9}>
+              <div className="text-center">
+                <div className="text-[22px] font-bold leading-none">{overallPct}%</div>
+                <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">complete</div>
+              </div>
+            </Ring>
             <div className="grid grid-cols-1 gap-3">
               <div className="rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Total XP</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">XP from badges</div>
                 <div className="mt-0.5 font-mono text-[22px] font-bold tabular-nums grad-text">{totalXP.toLocaleString()}</div>
               </div>
               <div className="rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Lessons</div>
-                <div className="mt-0.5 font-mono text-[22px] font-bold tabular-nums">{totalCompleted}</div>
+                <div className="mt-0.5 font-mono text-[22px] font-bold tabular-nums">{stats.totalLessonsCompleted}</div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Decorative orbs */}
         <div className="pointer-events-none absolute -bottom-10 -right-10 -top-10 w-[420px]">
           <div className="absolute right-0 top-5 h-[280px] w-[280px] rounded-full bg-yellow-400/30 blur-[40px]" />
           <div className="absolute right-[100px] top-[200px] h-[220px] w-[220px] rounded-full bg-primary/40 blur-[40px]" />
         </div>
       </section>
 
-      {/* ── Recent unlocks timeline ──────────────────────────────── */}
+      {/* ── Recent unlocks (real earnedAt timestamps only) ───────── */}
       {recentUnlocks.length > 0 && (
         <section className="flex flex-col gap-4">
-          <h2 className="text-[16px] font-bold tracking-tight text-muted-foreground uppercase tracking-[0.08em]">Recently unlocked</h2>
+          <h2 className="text-[12px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Recently unlocked</h2>
           <div className="flex flex-wrap gap-3">
             {recentUnlocks.map((a) => {
               const tier = TIER_STYLES[a.tier]
@@ -281,7 +359,7 @@ export default async function AchievementsPage() {
         </section>
       )}
 
-      {/* ── Achievements by category ─────────────────────────────── */}
+      {/* ── By category ─────────────────────────────────────────── */}
       <div className="flex flex-col gap-8">
         {grouped.map(({ category, items }) => {
           const earned = items.filter((i) => i.earned).length
@@ -306,12 +384,10 @@ export default async function AchievementsPage() {
                           : 'border-border bg-secondary/20',
                       ].join(' ')}
                     >
-                      {/* Tier chip */}
                       <span className={`absolute right-4 top-4 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] ${tier.chip}`}>
                         {tier.label}
                       </span>
 
-                      {/* Icon */}
                       <div className={`grid h-14 w-14 place-items-center rounded-2xl ${a.earned ? `bg-gradient-to-br ${tier.bg} ${tier.glow}` : 'bg-secondary/60'}`}>
                         {a.earned ? (
                           <Icon size={26} className="text-white drop-shadow-md" />
@@ -320,13 +396,11 @@ export default async function AchievementsPage() {
                         )}
                       </div>
 
-                      {/* Label + desc */}
                       <div>
                         <div className={`text-[15px] font-bold ${a.earned ? '' : 'text-muted-foreground'}`}>{a.label}</div>
                         <div className="mt-0.5 text-[12px] text-muted-foreground leading-snug">{a.desc}</div>
                       </div>
 
-                      {/* XP + earned date or progress */}
                       <div className="mt-auto flex flex-col gap-2">
                         {a.earned ? (
                           <>
@@ -361,15 +435,15 @@ export default async function AchievementsPage() {
         })}
       </div>
 
-      {/* ── Footer hint ──────────────────────────────────────────── */}
-      <section className="flex items-center justify-between rounded-2xl border border-border bg-gradient-to-br from-primary/[0.06] to-accent/[0.04] px-6 py-5">
+      {/* ── Footer: how XP works (transparent, derived constants) ── */}
+      <section className="rounded-2xl border border-border bg-gradient-to-br from-primary/[0.05] to-accent/[0.03] p-5">
         <div className="flex items-center gap-3">
           <div className="grid h-10 w-10 place-items-center rounded-[10px] bg-gradient-to-br from-primary to-accent shadow-[0_0_16px_rgba(139,92,246,0.4)]">
-            <Calendar size={18} className="text-white" />
+            <Clock size={18} className="text-white" />
           </div>
-          <div>
-            <div className="text-[14px] font-semibold">Office hours every Thursday</div>
-            <div className="text-[12px] text-muted-foreground">Help a teammate to unlock the &ldquo;Pair Programmer&rdquo; badge.</div>
+          <div className="text-[12.5px] leading-relaxed text-muted-foreground">
+            <span className="text-foreground font-semibold">How XP is earned: </span>
+            +{XP_PER_LESSON} XP per completed lesson · +{XP_PER_PERFECT_QUIZ} XP per perfect quiz score · +10 XP per quiz attempt.
           </div>
         </div>
       </section>

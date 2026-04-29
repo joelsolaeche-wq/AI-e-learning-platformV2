@@ -1,98 +1,185 @@
 // app/dashboard/team/page.tsx
+// All data sourced from Supabase under RLS:
+//   - profiles (own + cohort-mates) for member roster
+//   - enrollments (cohort-mate-readable) for who's in the cohort
+//   - cohorts for active cohort schedule (start/end dates from real rows)
+// Peer lesson_progress is RLS-blocked, so no peer progress %s here.
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import {
-  Users, MessageSquare, Zap, ChevronRight,
-  Briefcase, Activity, Clock, Building2, Sparkles, Flame, Trophy,
+  Users, Building2, Sparkles, ChevronRight, Calendar, BookOpen,
 } from 'lucide-react'
 import Link from 'next/link'
+import type { Database } from '@/lib/database.types'
+import { getLearnerStats } from '@/lib/learner-stats'
 
-type Member = {
+type ProfileRow = {
   id: string
-  name: string
+  full_name: string | null
+  email: string
+  org_id: string | null
   role: string
-  initials: string
-  color: string
-  course: string
-  pct: number
-  streak: number
-  isYou?: boolean
-  lastSeen: string
-  status: 'online' | 'away' | 'offline'
+  organizations: { name: string; slug: string } | null
 }
 
-// Mock cohort peers — RLS typically restricts cross-user reads on profiles +
-// lesson_progress. Replace with an org-scoped DB view or RPC in production.
-const MOCK_PEERS: Omit<Member, 'isYou'>[] = [
-  { id: '1', name: 'Devon Cole', role: 'Senior ML Engineer', initials: 'DC', color: '#7C3AED', course: 'RAG Systems from Scratch', pct: 82, streak: 12, lastSeen: '2 min ago', status: 'online' },
-  { id: '2', name: 'Riya Shah', role: 'Product Manager', initials: 'RS', color: '#22D3EE', course: 'Prompt Engineering', pct: 64, streak: 8, lastSeen: '12 min ago', status: 'online' },
-  { id: '3', name: 'Marcus Lee', role: 'Frontend Lead', initials: 'ML', color: '#F472B6', course: 'Evaluating LLM Apps', pct: 51, streak: 5, lastSeen: '1 hour ago', status: 'away' },
-  { id: '4', name: 'Aiko Nakamura', role: 'Data Scientist', initials: 'AN', color: '#34D399', course: 'AI Foundations', pct: 47, streak: 4, lastSeen: '2 hours ago', status: 'away' },
-  { id: '5', name: 'Theo Bauer', role: 'Backend Engineer', initials: 'TB', color: '#FBBF24', course: 'Agentic Workflows', pct: 31, streak: 2, lastSeen: 'Yesterday', status: 'offline' },
-  { id: '6', name: 'Priya Chand', role: 'Director of Engineering', initials: 'PC', color: '#FB7185', course: 'AI for Leaders', pct: 91, streak: 22, lastSeen: '5 min ago', status: 'online' },
-]
+type EnrollmentJoined = {
+  user_id: string
+  enrolled_at: string
+  cohort_id: string
+  cohorts: Pick<
+    Database['public']['Tables']['cohorts']['Row'],
+    'id' | 'title' | 'starts_at' | 'ends_at' | 'status' | 'course_id'
+  > & {
+    courses: Pick<
+      Database['public']['Tables']['courses']['Row'],
+      'id' | 'title'
+    > | null
+  }
+}
 
-// Mock activity feed
-const ACTIVITY = [
-  { who: 'Devon Cole', what: 'finished RAG retrieval lesson', when: '2 min ago', Icon: Sparkles, color: 'text-primary' },
-  { who: 'Priya Chand', what: 'earned the Cohort Champion badge', when: '12 min ago', Icon: Trophy, color: 'text-yellow-400' },
-  { who: 'Riya Shah', what: 'aced the structured-output quiz', when: '34 min ago', Icon: Zap, color: 'text-cyan-400' },
-  { who: 'Marcus Lee', what: 'asked a question in #ai-cohort', when: '1 hour ago', Icon: MessageSquare, color: 'text-pink-400' },
-  { who: 'Aiko Nakamura', what: 'started Evaluating LLM Apps', when: '2 hours ago', Icon: Activity, color: 'text-emerald-400' },
-]
+const PEER_COLORS = ['#7C3AED', '#22D3EE', '#F472B6', '#34D399', '#FBBF24', '#FB7185', '#60A5FA', '#FB923C', '#A78BFA', '#10B981']
+function colorFor(id: string): string {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return PEER_COLORS[h % PEER_COLORS.length]
+}
 
-// Upcoming live sessions
-const SESSIONS = [
-  { day: 'TUE', date: 4, title: 'Office hours: RAG architecture', host: 'Dr. Maya Reyes', time: '6:00 PM EST', kind: 'Live workshop' },
-  { day: 'THU', date: 6, title: 'Code review: Lab 03', host: 'Adesua Okafor', time: '5:00 PM EST', kind: 'Code review' },
-  { day: 'FRI', date: 7, title: 'Cohort Q&A — Eval rubrics', host: 'Priya Chand', time: '4:00 PM EST', kind: 'Q&A' },
-]
+function initialsOf(name: string | null, email: string): string {
+  const src = (name && name.trim()) || email.split('@')[0]
+  const parts = src.split(/\s+/)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return src.slice(0, 2).toUpperCase()
+}
+
+function relativeDays(iso: string): string {
+  const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
+  if (d === 0) return 'Joined today'
+  if (d === 1) return 'Joined yesterday'
+  if (d < 7) return `Joined ${d}d ago`
+  if (d < 30) return `Joined ${Math.floor(d / 7)}w ago`
+  return `Joined ${Math.floor(d / 30)}mo ago`
+}
+
+function formatCohortDates(start: string, end: string | null): string {
+  const s = new Date(start)
+  const sFmt = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  if (!end) return `Starts ${sFmt}`
+  const e = new Date(end)
+  const eFmt = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${sFmt} → ${eFmt}`
+}
 
 export default async function TeamPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Real org info (if accessible)
-  const { data: profileData } = await supabase
-    .from('profiles')
-    .select('full_name, email, org_id, role, organizations(name, slug)')
-    .eq('id', user.id)
-    .maybeSingle()
+  // Own profile + own learner stats
+  const [profileResult, stats, ownEnrollmentsResult] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, email, org_id, role, organizations(name, slug)')
+      .eq('id', user.id)
+      .maybeSingle(),
+    getLearnerStats(supabase, user.id),
+    supabase
+      .from('enrollments')
+      .select(`user_id, enrolled_at, cohort_id,
+               cohorts ( id, title, starts_at, ends_at, status, course_id,
+                 courses ( id, title ) )`)
+      .eq('user_id', user.id)
+      .eq('status', 'active'),
+  ])
 
-  const profile = profileData as unknown as {
-    full_name: string | null
+  const profile = profileResult.data as unknown as ProfileRow | null
+  const orgName = profile?.organizations?.name ?? 'Your Cohort'
+
+  const ownEnrollments = (ownEnrollmentsResult.data ?? []) as unknown as EnrollmentJoined[]
+  const userCohortIds = ownEnrollments.map((e) => e.cohort_id)
+
+  // Cohort-mate enrollments (RLS allows for shared cohorts)
+  let peerEnrollments: EnrollmentJoined[] = []
+  if (userCohortIds.length > 0) {
+    const { data: peerData } = await supabase
+      .from('enrollments')
+      .select(`user_id, enrolled_at, cohort_id,
+               cohorts ( id, title, starts_at, ends_at, status, course_id,
+                 courses ( id, title ) )`)
+      .in('cohort_id', userCohortIds)
+      .order('enrolled_at', { ascending: true })
+    peerEnrollments = (peerData ?? []) as unknown as EnrollmentJoined[]
+  }
+
+  // Group enrollments by user → primary cohort = most recent enrollment
+  const userToEnrollment = new Map<string, EnrollmentJoined>()
+  for (const e of peerEnrollments) {
+    const existing = userToEnrollment.get(e.user_id)
+    if (!existing || e.enrolled_at > existing.enrolled_at) {
+      userToEnrollment.set(e.user_id, e)
+    }
+  }
+
+  // Profiles for everyone in cohorts (RLS allows)
+  const peerUserIds = [...userToEnrollment.keys()]
+  type RosterMember = {
+    id: string
+    name: string
     email: string
-    org_id: string | null
     role: string
-    organizations: { name: string; slug: string } | null
-  } | null
+    initials: string
+    color: string
+    enrolledAt: string
+    cohortTitle: string
+    courseTitle: string | null
+    isYou: boolean
+  }
 
-  const orgName = profile?.organizations?.name ?? 'Synapse Cohort'
-  const userInitials = (profile?.full_name ?? user.email ?? 'YO').slice(0, 2).toUpperCase()
+  let roster: RosterMember[] = []
+  if (peerUserIds.length > 0) {
+    const { data: peerProfilesData } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .in('id', peerUserIds)
 
-  // Compose member list with current user inserted
-  const members: Member[] = [
-    {
-      id: user.id,
-      name: profile?.full_name ?? (user.email ?? '').split('@')[0] ?? 'You',
-      role: profile?.role === 'admin' ? 'Admin · You' : 'Cohort Member · You',
-      initials: userInitials,
-      color: '#A78BFA',
-      course: 'AI Foundations · Prompt Engineering',
-      pct: 62,
-      streak: 7,
-      isYou: true,
-      lastSeen: 'Now',
-      status: 'online',
-    },
-    ...MOCK_PEERS,
-  ]
+    type PeerProfile = { id: string; full_name: string | null; email: string; role: string }
+    const peerProfiles = (peerProfilesData ?? []) as PeerProfile[]
 
-  const onlineCount = members.filter((m) => m.status === 'online').length
-  const totalMembers = members.length
-  const avgPct = Math.round(members.reduce((s, m) => s + m.pct, 0) / members.length)
-  const totalStreakDays = members.reduce((s, m) => s + m.streak, 0)
+    roster = peerProfiles.map((p) => {
+      const e = userToEnrollment.get(p.id)!
+      return {
+        id: p.id,
+        name: p.full_name ?? p.email.split('@')[0],
+        email: p.email,
+        role: p.role,
+        initials: initialsOf(p.full_name, p.email),
+        color: colorFor(p.id),
+        enrolledAt: e.enrolled_at,
+        cohortTitle: e.cohorts.title,
+        courseTitle: e.cohorts.courses?.title ?? null,
+        isYou: p.id === user.id,
+      }
+    })
+
+    // Sort: you first, then by enrollment date desc
+    roster.sort((a, b) => {
+      if (a.isYou && !b.isYou) return -1
+      if (!a.isYou && b.isYou) return 1
+      return b.enrolledAt.localeCompare(a.enrolledAt)
+    })
+  }
+
+  // Aggregate stats
+  const totalMembers = roster.length
+  const newThisWeek = roster.filter((m) => {
+    const d = (Date.now() - new Date(m.enrolledAt).getTime()) / 86_400_000
+    return d <= 7
+  }).length
+
+  // All cohorts the user is in (with full schedule)
+  const cohortSchedule = ownEnrollments
+    .map((e) => e.cohorts)
+    .filter((c): c is EnrollmentJoined['cohorts'] => Boolean(c))
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
 
   return (
     <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8">
@@ -106,32 +193,33 @@ export default async function TeamPage() {
             </div>
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-cyan-300">
-                <Users size={12} /> Enterprise Cohort
+                <Users size={12} /> Cohort
               </div>
-              <h1 className="my-2 text-[34px] font-bold leading-[1.08] tracking-[-0.02em]">
-                {orgName}
-              </h1>
+              <h1 className="my-2 text-[34px] font-bold leading-[1.08] tracking-[-0.02em]">{orgName}</h1>
               <p className="text-[14px] text-muted-foreground">
-                {totalMembers} learners · {onlineCount} online · shared cohort schedule
+                {totalMembers > 0
+                  ? `${totalMembers} learner${totalMembers !== 1 ? 's' : ''} sharing your cohort schedule`
+                  : 'Join a cohort to see your teammates here'}
               </p>
             </div>
           </div>
 
-          {/* Stat tiles */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {[
-              { label: 'Members', value: totalMembers, Icon: Users, hue: 'text-cyan-400' },
-              { label: 'Active streak', value: `${totalStreakDays}d`, Icon: Flame, hue: 'text-orange-400' },
-              { label: 'Avg progress', value: `${avgPct}%`, Icon: Activity, hue: 'text-primary' },
-              { label: 'Online now', value: onlineCount, Icon: Sparkles, hue: 'text-emerald-400' },
-            ].map(({ label, value, Icon, hue }) => (
-              <div key={label} className="rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
-                <Icon size={14} className={hue} />
-                <div className="mt-1 font-mono text-[20px] font-bold tabular-nums">{value}</div>
-                <div className="text-[10.5px] uppercase tracking-[0.07em] text-muted-foreground">{label}</div>
-              </div>
-            ))}
-          </div>
+          {/* Stat tiles — every value is real */}
+          {totalMembers > 0 && (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[
+                { label: 'Members', value: totalMembers, hue: 'text-cyan-400' },
+                { label: 'New this week', value: newThisWeek, hue: 'text-emerald-400' },
+                { label: 'Your streak', value: `${stats.currentStreakDays}d`, hue: 'text-orange-400' },
+                { label: 'Your XP', value: stats.xp.toLocaleString(), hue: 'text-primary' },
+              ].map(({ label, value, hue }) => (
+                <div key={label} className="rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
+                  <div className={`text-[10.5px] uppercase tracking-[0.07em] ${hue}`}>{label}</div>
+                  <div className="mt-1 font-mono text-[20px] font-bold tabular-nums">{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="pointer-events-none absolute -bottom-10 -right-10 -top-10 w-[420px]">
@@ -140,170 +228,129 @@ export default async function TeamPage() {
         </div>
       </section>
 
-      {/* ── Two-col: Members + Schedule ──────────────────────────── */}
+      {/* ── Two-col: Members + Schedule ─────────────────────────── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
 
         {/* Team members */}
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-[18px] font-bold tracking-tight">Team members</h2>
-            <button className="inline-flex items-center gap-1.5 rounded-[10px] border border-border bg-card px-3 py-1.5 text-[12px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground">
-              <MessageSquare size={12} /> Open #ai-cohort
-            </button>
+            <h2 className="text-[18px] font-bold tracking-tight">Cohort members</h2>
+            <span className="text-[12px] text-muted-foreground">{roster.length} total</span>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {members.map((m) => (
-              <div
-                key={m.id}
-                className={[
-                  'flex flex-col gap-3 rounded-2xl border p-4 transition-all hover:-translate-y-0.5',
-                  m.isYou
-                    ? 'border-primary/30 bg-gradient-to-br from-primary/[0.10] to-accent/[0.04] ring-1 ring-primary/20'
-                    : 'border-border bg-card hover:border-white/15',
-                ].join(' ')}
+          {roster.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card py-12 text-center">
+              <Users size={32} className="text-muted-foreground/40" />
+              <div>
+                <div className="text-[14px] font-semibold">You&apos;re not in a cohort yet</div>
+                <div className="mt-1 text-[12.5px] text-muted-foreground">
+                  Join a cohort from the catalog to meet your team.
+                </div>
+              </div>
+              <Link
+                href="/catalog"
+                className="mt-2 inline-flex items-center gap-1 rounded-[10px] border border-border bg-card px-4 py-2 text-[12.5px] font-semibold hover:bg-secondary"
               >
-                <div className="flex items-start gap-3">
-                  <div className="relative">
+                Browse catalog <ChevronRight size={12} />
+              </Link>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {roster.map((m) => (
+                <div
+                  key={m.id}
+                  className={[
+                    'flex flex-col gap-3 rounded-2xl border p-4 transition-all hover:-translate-y-0.5',
+                    m.isYou
+                      ? 'border-primary/30 bg-gradient-to-br from-primary/[0.10] to-accent/[0.04] ring-1 ring-primary/20'
+                      : 'border-border bg-card hover:border-white/15',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start gap-3">
                     <div
-                      className="grid h-11 w-11 place-items-center rounded-full text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
+                      className="grid h-11 w-11 flex-shrink-0 place-items-center rounded-full text-[13px] font-bold text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
                       style={{ background: m.color }}
                     >
                       {m.initials}
                     </div>
-                    <span
-                      className={[
-                        'absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-card',
-                        m.status === 'online' ? 'bg-emerald-400 shadow-[0_0_6px_rgb(52,211,153)]' :
-                        m.status === 'away' ? 'bg-yellow-400' : 'bg-muted',
-                      ].join(' ')}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-[14px] font-semibold">{m.name}</span>
-                      {m.isYou && (
-                        <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary">YOU</span>
-                      )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[14px] font-semibold">{m.name}</span>
+                        {m.isYou && (
+                          <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary">YOU</span>
+                        )}
+                      </div>
+                      <div className="text-[11.5px] capitalize text-muted-foreground">{m.role}</div>
                     </div>
-                    <div className="text-[11.5px] text-muted-foreground">{m.role}</div>
-                  </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-orange-400">
-                      <Flame size={10} /> {m.streak}d
+                    <span className="text-[10.5px] tabular-nums text-muted-foreground/70 whitespace-nowrap">
+                      {relativeDays(m.enrolledAt)}
                     </span>
-                    <span className="text-[10px] text-muted-foreground/70">{m.lastSeen}</span>
                   </div>
-                </div>
 
-                {/* Currently learning */}
-                <div className="rounded-[10px] border border-border bg-secondary/30 px-3 py-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Currently learning</div>
-                  <div className="mt-0.5 truncate text-[12.5px] font-medium">{m.course}</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${m.pct}%`, background: m.color, boxShadow: `0 0 6px ${m.color}77` }}
-                      />
-                    </div>
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{m.pct}%</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Right: Schedule + Activity */}
-        <div className="flex flex-col gap-6">
-
-          {/* Cohort schedule */}
-          <section className="rounded-2xl border border-border bg-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[15px] font-bold tracking-tight">Upcoming sessions</h2>
-              <Link href="/catalog" className="text-[11.5px] text-muted-foreground hover:text-foreground">
-                Calendar
-              </Link>
-            </div>
-            <div className="flex flex-col gap-2.5">
-              {SESSIONS.map((s, i) => (
-                <div
-                  key={i}
-                  className="group flex items-start gap-3 rounded-xl border border-border bg-secondary/20 p-3 transition-all hover:border-primary/30 hover:bg-secondary/40"
-                >
-                  <div className="flex w-12 flex-shrink-0 flex-col items-center rounded-lg border border-border bg-card py-1.5">
-                    <div className="text-[9px] font-bold uppercase tracking-[0.08em] text-primary">{s.day}</div>
-                    <div className="font-mono text-[16px] font-bold tabular-nums">{s.date}</div>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">{s.kind}</div>
-                    <div className="text-[13px] font-semibold leading-snug">{s.title}</div>
-                    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Briefcase size={10} /> {s.host}
-                      <span>·</span>
-                      <Clock size={10} /> {s.time}
+                  <div className="rounded-[10px] border border-border bg-secondary/30 px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">In cohort</div>
+                    <div className="mt-0.5 truncate text-[12.5px] font-medium">
+                      {m.courseTitle ?? m.cohortTitle}
                     </div>
                   </div>
-                  <ChevronRight size={14} className="mt-1 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-primary" />
                 </div>
               ))}
             </div>
-          </section>
+          )}
+        </section>
 
-          {/* Activity feed */}
-          <section className="rounded-2xl border border-border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-[15px] font-bold tracking-tight">Cohort activity</h2>
-              <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-                <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" />
-                Live
-              </span>
+        {/* Right: Cohort schedule (real cohort start/end dates only) */}
+        <aside className="flex flex-col gap-4">
+          <h2 className="text-[15px] font-bold tracking-tight">Cohort schedule</h2>
+
+          {cohortSchedule.length === 0 ? (
+            <div className="rounded-2xl border border-border bg-card p-5 text-center text-[13px] text-muted-foreground">
+              No cohort schedule yet.
             </div>
-            <div className="flex flex-col gap-3">
-              {ACTIVITY.map((a, i) => {
-                const Icon = a.Icon
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {cohortSchedule.map((c) => {
+                const start = new Date(c.starts_at)
+                const isUpcoming = start.getTime() > Date.now()
                 return (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className={`mt-0.5 grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-secondary/60 ${a.color}`}>
-                      <Icon size={12} />
-                    </div>
-                    <div className="min-w-0 flex-1 leading-snug">
-                      <div className="text-[12.5px]">
-                        <span className="font-semibold">{a.who}</span>{' '}
-                        <span className="text-muted-foreground">{a.what}</span>
+                  <div key={c.id} className="rounded-2xl border border-border bg-card p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-[10px] bg-gradient-to-br from-primary/20 to-accent/15 ring-1 ring-primary/30">
+                        <Calendar size={16} className="text-primary" />
                       </div>
-                      <div className="mt-0.5 text-[10.5px] text-muted-foreground/70">{a.when}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+                            {isUpcoming ? 'Upcoming' : c.status}
+                          </span>
+                        </div>
+                        <div className="text-[13.5px] font-semibold leading-snug">{c.title}</div>
+                        <div className="mt-0.5 text-[11.5px] text-muted-foreground">
+                          {formatCohortDates(c.starts_at, c.ends_at)}
+                        </div>
+                        {c.courses?.title && (
+                          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-border bg-secondary/40 px-2 py-0.5 text-[10.5px] text-muted-foreground">
+                            <BookOpen size={9} /> {c.courses.title}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
               })}
             </div>
-          </section>
-        </div>
-      </div>
+          )}
 
-      {/* ── Footer CTA: Instructor feedback ─────────────────────── */}
-      <section className="rounded-2xl border border-border bg-gradient-to-br from-primary/[0.08] to-accent/[0.05] p-6">
-        <div className="flex flex-col items-start gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-accent shadow-[0_0_20px_rgba(139,92,246,0.4)]">
-              <MessageSquare size={20} className="text-white" />
+          {/* Trust strip — generic, no fake names */}
+          <div className="rounded-2xl border border-border bg-gradient-to-br from-primary/[0.06] to-accent/[0.04] p-4 text-[11.5px] leading-relaxed text-muted-foreground">
+            <div className="mb-2 flex items-center gap-2 text-foreground">
+              <Sparkles size={13} className="text-primary" />
+              <span className="font-semibold">Cohort-based learning</span>
             </div>
-            <div>
-              <div className="text-[16px] font-bold">Instructor feedback open</div>
-              <div className="mt-0.5 text-[13px] text-muted-foreground">
-                Submit your latest lab project for a 1:1 review with{' '}
-                <span className="font-medium text-foreground">Dr. Maya Reyes</span>.
-                Average turnaround: 24 hours.
-              </div>
-            </div>
+            Everyone in your cohort follows the same schedule. Progress at your own pace; check back to see who&apos;s shipped.
           </div>
-          <button className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-5 py-2.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5">
-            Request review <ChevronRight size={14} />
-          </button>
-        </div>
-      </section>
+        </aside>
+      </div>
     </main>
   )
 }

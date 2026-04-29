@@ -4,19 +4,19 @@
 import { Search, Bell, Sparkles } from 'lucide-react'
 
 interface TopBarProps {
-  level?: number
-  xp?: number
-  xpToNext?: number
+  level: number
+  xp: number
+  xpToNext: number
   notificationCount?: number
 }
 
 export function TopBar({
-  level = 7,
-  xp = 2340,
-  xpToNext = 3800,
+  level,
+  xp,
+  xpToNext,
   notificationCount = 0,
 }: TopBarProps) {
-  const pct = Math.min(100, Math.round((xp / xpToNext) * 100))
+  const pct = xpToNext > 0 ? Math.min(100, Math.round((xp / xpToNext) * 100)) : 0
 
   return (
     <div className="sticky top-0 z-30 flex items-center gap-4 border-b border-border bg-background/65 px-10 py-3.5 backdrop-blur-md">
