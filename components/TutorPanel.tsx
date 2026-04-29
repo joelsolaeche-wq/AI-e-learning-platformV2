@@ -6,12 +6,28 @@ import { Sparkles, Send, X, Minus } from 'lucide-react'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
-export function TutorPanel({ lessonId }: { lessonId?: string } = {}) {
+const WELCOME: Message = {
+  role: 'assistant',
+  content: "Hi! I'm Synapse — your AI tutor. Ask me anything about this lesson, or try one of the prompts below.",
+}
+
+export function TutorPanel({
+  lessonId,
+  initialMessages,
+}: {
+  lessonId?: string
+  initialMessages?: { id?: string; role: string; content: string; createdAt?: Date }[]
+}) {
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm Synapse — your AI tutor. Ask me anything about this lesson, or try one of the prompts below." },
-  ])
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (initialMessages && initialMessages.length > 0) {
+      return initialMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    }
+    return [WELCOME]
+  })
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
