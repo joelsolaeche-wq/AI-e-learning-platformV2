@@ -43,6 +43,7 @@ type ChatMessageRow = {
   id: string
   role: string
   content: string
+  created_at: string
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +99,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
 
       const { data: messagesData } = await supabase
         .from('ai_chat_messages')
-        .select('id, role, content')
+        .select('id, role, content, created_at')
         .eq('session_id', (sessionData as unknown as { id: string }).id)
         .order('created_at', { ascending: true })
         .limit(20)
@@ -134,6 +135,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     id: m.id,
     role: m.role as 'user' | 'assistant',
     content: m.content,
+    createdAt: new Date(m.created_at),
   }))
 
   return (
