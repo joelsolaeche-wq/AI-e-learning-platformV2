@@ -64,18 +64,20 @@ A learner at an enterprise company can sign up, join their team's AI cohort, con
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] User can browse the course catalog *(Validated Phase 2)*
+- [x] User can view a cohort and its schedule *(Validated Phase 2)*
+- [x] User can enroll in a scheduled cohort *(Validated Phase 3)*
+- [x] User has a dashboard showing enrolled cohorts and progress *(Validated Phase 3)*
+- [x] User can watch a video lesson with progress tracking *(Validated Phase 4)*
+- [x] User can take a quiz after a lesson *(Validated Phase 5)*
+- [x] Quiz is scored server-side with no answer key sent to client *(Validated Phase 5)*
+- [x] User sees score and per-question review immediately after submission *(Validated Phase 5)*
 
 ### Active
 
 - [ ] User can register with email and password
 - [ ] User can log in and stay logged in across sessions
 - [ ] User can log out from any page
-- [ ] User can browse the course catalog
-- [ ] User can view a cohort and its schedule
-- [ ] User can enroll in a scheduled cohort
-- [ ] User can watch a video lesson with progress tracking
-- [ ] User can take a quiz after a lesson
 - [ ] User can chat with the AI tutor during a lesson
 - [ ] User has a dashboard showing enrolled cohorts and progress
 
@@ -104,4 +106,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-28 after initialization*
+*Last updated: 2026-04-29 — Phase 5 complete: Quiz Engine shipped (QuizSection state machine, server-side scoring, enrollment-scoped RLS)*
