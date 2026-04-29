@@ -1,10 +1,10 @@
 # Project State
 
 ## Current Phase
-4
+6
 
 ## Status
-Complete (3/3 plans)
+Ready to plan
 
 ## Phases
 | # | Name | Status | Requirements |
@@ -13,11 +13,11 @@ Complete (3/3 plans)
 | 2 | Data Model + Course Catalog | complete (5/5 plans) | CATALOG-01, CATALOG-02 |
 | 3 | Cohort Enrollment + Learner Dashboard | complete (5/5 plans) | COHORT-01, COHORT-02, COHORT-03, COHORT-04 |
 | 4 | Video Lesson Experience | complete (3/3 plans) | LESSON-01, LESSON-02, LESSON-03, LESSON-04 |
-| 5 | Quiz Engine | ready to execute (3/3 plans) | QUIZ-01, QUIZ-02, QUIZ-03 |
+| 5 | Quiz Engine | complete (3/3 plans) | QUIZ-01, QUIZ-02, QUIZ-03 |
 | 6 | AI Tutor | pending | AI-01, AI-02, AI-03, AI-04, AI-05 |
 
 ## Current Plan
-04-01
+06-01
 
 ## Decisions
 - Use OR-based SELECT policy on profiles (Postgres allows multiple SELECT policies that OR together — new cohort-mate branch does not replace migration 00001 existing policy)
@@ -28,7 +28,7 @@ Complete (3/3 plans)
 - LessonProgressRow inline type cast for PostgREST 14.5 schema inference workaround (consistent with Plan 02 EnrollmentCohortIdRow pattern)
 
 ## Last Updated
-2026-04-28 — Phase 5 Quiz Engine planned: 3 plans (shadcn install + RLS migration, schema push + submit route, lesson page + QuizSection UI)
+2026-04-29 — Phase 5 Quiz Engine complete: RadioGroup + Progress components, RLS migration 00008, POST /api/quiz/submit route, QuizSection LOCKED→ACTIVE→SUBMITTED→RESULTS state machine
 
 ## Decisions
 - Use OR-based SELECT policy on profiles (Postgres allows multiple SELECT policies that OR together — new cohort-mate branch does not replace migration 00001 existing policy)

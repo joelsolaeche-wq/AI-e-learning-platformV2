@@ -34,9 +34,9 @@
 
 ### Quiz (QUIZ)
 
-- [ ] **QUIZ-01**: User can take a quiz after completing a lesson
-- [ ] **QUIZ-02**: Quiz is scored server-side (quiz definitions never sent to client)
-- [ ] **QUIZ-03**: User sees their score and per-question answer review immediately after submission
+- [x] **QUIZ-01**: User can take a quiz after completing a lesson *(Validated Phase 5)*
+- [x] **QUIZ-02**: Quiz is scored server-side (quiz definitions never sent to client) *(Validated Phase 5)*
+- [x] **QUIZ-03**: User sees their score and per-question answer review immediately after submission *(Validated Phase 5)*
 
 ### AI Tutor (AI)
 

@@ -60,10 +60,16 @@
 
 ---
 
-## Phase 5: Quiz Engine
+## Phase 5: Quiz Engine ✓ COMPLETE (3/3 plans) — 2026-04-29
 **Goal:** A user who has completed a lesson can take a post-lesson quiz, receive a server-side score, and immediately see their total score and per-question answer review.
 **Requirements:** QUIZ-01, QUIZ-02, QUIZ-03
 **UI hint:** yes
+**Plans:** 3 plans
+
+Plans:
+- [x] 05-01-PLAN.md — Install shadcn radio-group + progress, write RLS migration 00008
+- [x] 05-02-PLAN.md — Apply schema push [BLOCKING] + create POST /api/quiz/submit Route Handler
+- [x] 05-03-PLAN.md — Extend LessonPage server component + create QuizSection client component
 
 ### Success Criteria
 1. The "Take Quiz" button on a lesson page is only enabled (or visible) after the corresponding `lesson_progress` row has `completed = true` — confirming quiz unlock depends on lesson completion.
