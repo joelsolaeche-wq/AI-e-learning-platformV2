@@ -47,6 +47,8 @@ export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: 
   }, [duration, saveProgress, router])
 
   const handleEnded = useCallback(() => {
+    if (completedRef.current) return // already handled by handleTimeUpdate
+    completedRef.current = true
     saveProgress(duration, true).then(() => router.refresh())
   }, [duration, saveProgress, router])
 
