@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { TutorPanel } from '@/components/TutorPanel'
+import { getLearnerStats } from '@/lib/learner-stats'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -35,11 +36,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ? `/dashboard/lesson/${(lastProgress as unknown as { lesson_id: string }).lesson_id}`
     : undefined
 
+  // Real learner stats (XP, level, streak) — derived from lesson_progress + quiz_attempts
+  const stats = await getLearnerStats(supabase, user.id)
+
   return (
     <div className="grid min-h-screen grid-cols-[248px_1fr]">
-      <Sidebar user={sidebarUser} streakDays={7} lastLessonHref={lastLessonHref} />
+      <Sidebar
+        user={sidebarUser}
+        streakDays={stats.currentStreakDays}
+        lastLessonHref={lastLessonHref}
+      />
       <div className="flex min-w-0 flex-col">
-        <TopBar level={7} xp={2340} xpToNext={3800} notificationCount={3} />
+        <TopBar
+          level={stats.level}
+          xp={stats.xp}
+          xpToNext={stats.xpForNextLevel}
+        />
         <div className="px-10 pb-20 pt-6">{children}</div>
       </div>
       {/* Floating AI tutor — global to all dashboard routes */}

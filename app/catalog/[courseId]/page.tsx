@@ -1,10 +1,12 @@
 // app/catalog/[courseId]/page.tsx
+// All data sourced from Supabase: courses, modules, lessons, cohorts,
+// user enrollments. No mocked instructor / ratings / office hours.
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import {
-  Clock, PlayCircle, ChevronRight, Star, Users, Sparkles, Award,
-  BookOpen, Code2, Briefcase, CheckCircle2, ChevronLeft,
+  Clock, PlayCircle, ChevronRight, Users, Sparkles,
+  BookOpen, Code2, ChevronLeft, CheckCircle2, Calendar,
 } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
 import { EnrollButton } from '@/components/EnrollButton'
@@ -91,19 +93,21 @@ export default async function CourseDetailPage({ params }: PageProps) {
   if (courseResult.error || !rawCourse) notFound()
   const course: CourseRow = rawCourse as CourseRow
 
-  // Aggregate stats
+  // Real aggregate stats
   const totalLessons = modules.reduce((s, m) => s + (m.lessons?.length ?? 0), 0)
   const totalSeconds = modules.reduce(
     (s, m) => s + (m.lessons ?? []).reduce((ss, l) => ss + (l.duration_seconds ?? 0), 0),
     0,
   )
-  const totalHours = Math.max(1, Math.round(totalSeconds / 3600))
+  const totalHours = totalSeconds > 0 ? Math.max(1, Math.round(totalSeconds / 3600)) : 0
   const hue = hueFor(course.id)
+  const activeCohortCount = cohorts.filter((c) => c.status === 'active').length
+  const upcomingCohortCount = cohorts.filter((c) => new Date(c.starts_at).getTime() > Date.now()).length
 
-  // What you'll learn — derived from module titles, AI-themed
+  // Module titles → "What you'll learn" (real data, just visualised)
   const learningOutcomes = modules.slice(0, 6).map((m, i) => ({
     text: m.title,
-    Icon: [Sparkles, Code2, Briefcase, Award, BookOpen, Users][i % 6],
+    Icon: [Sparkles, Code2, BookOpen, CheckCircle2, Users, Calendar][i % 6],
   }))
 
   return (
@@ -122,7 +126,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
         <div className="flex flex-col gap-5">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" />
-            <span>Course · AI Foundations</span>
+            <span>Course</span>
           </div>
 
           <h1 className="text-[44px] font-bold leading-[1.05] tracking-[-0.025em]">
@@ -135,44 +139,31 @@ export default async function CourseDetailPage({ params }: PageProps) {
             </p>
           )}
 
-          {/* Stats bar */}
+          {/* Stats bar — only counts that come from real rows */}
           <div className="flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
               <PlayCircle size={14} className="text-primary" />
-              <span className="font-medium text-foreground">{totalLessons}</span> lessons
+              <span className="font-medium text-foreground">{totalLessons}</span> lesson{totalLessons !== 1 ? 's' : ''}
+            </span>
+            {totalHours > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <Clock size={14} className="text-accent" />
+                <span className="font-medium text-foreground">{totalHours}h</span> total
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <BookOpen size={14} className="text-cyan-400" />
+              <span className="font-medium text-foreground">{modules.length}</span> module{modules.length !== 1 ? 's' : ''}
             </span>
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Clock size={14} className="text-accent" />
-              <span className="font-medium text-foreground">{totalHours}h</span> total
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Users size={14} className="text-cyan-400" />
+              <Users size={14} className="text-emerald-400" />
               <span className="font-medium text-foreground">{cohorts.length}</span> cohort{cohorts.length !== 1 ? 's' : ''}
+              {activeCohortCount > 0 && <span className="text-emerald-400/80">· {activeCohortCount} active</span>}
             </span>
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Star size={14} className="text-yellow-400" fill="currentColor" />
-              <span className="font-medium text-foreground">4.9</span> · 412 ratings
-            </span>
-          </div>
-
-          {/* Instructor block */}
-          <div className="mt-2 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(139,92,246,0.4)]">
-              MR
-            </div>
-            <div className="flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Instructor</div>
-              <div className="text-[14px] font-semibold">Dr. Maya Reyes</div>
-              <div className="text-[11.5px] text-muted-foreground">Principal Researcher · Anthropic alum</div>
-            </div>
-            <div className="hidden text-right md:block">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Office hours</div>
-              <div className="text-[12px] font-medium">Thursdays · 6 PM EST</div>
-            </div>
           </div>
         </div>
 
-        {/* Hero thumbnail */}
+        {/* Hero thumbnail (real thumbnail_url or gradient fallback) */}
         <div
           className="relative aspect-[16/11] overflow-hidden rounded-[22px] border border-border"
           style={{ background: `linear-gradient(135deg, ${hue.from}, ${hue.to})` }}
@@ -190,13 +181,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
               {hue.symbol}
             </span>
           )}
-          <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-            <PlayCircle size={12} /> Preview available
-          </span>
         </div>
       </section>
 
-      {/* ── What you'll learn ────────────────────────────────────── */}
+      {/* ── What you'll learn (module titles, real) ─────────────── */}
       {learningOutcomes.length > 0 && (
         <section className="flex flex-col gap-4">
           <h2 className="text-[20px] font-bold tracking-tight">What you&apos;ll learn</h2>
@@ -241,7 +229,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
 
                 return (
                   <div key={mod.id} className="overflow-hidden rounded-2xl border border-border bg-card">
-                    {/* Module header */}
                     <div className="flex items-center gap-3 border-b border-border bg-secondary/20 px-5 py-3.5">
                       <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-gradient-to-br from-primary/20 to-accent/15 font-mono text-[12px] font-bold text-primary ring-1 ring-primary/30">
                         {String(i + 1).padStart(2, '0')}
@@ -256,7 +243,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
                       </div>
                     </div>
 
-                    {/* Lessons */}
                     <div className="flex flex-col">
                       {lessons.map((lesson, li) => (
                         <Link
@@ -288,7 +274,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
 
         {/* Cohorts (sticky right rail) */}
         <aside className="flex flex-col gap-4 lg:sticky lg:top-6">
-          <h2 className="text-[18px] font-bold tracking-tight">Available cohorts</h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-[18px] font-bold tracking-tight">Cohorts</h2>
+            {upcomingCohortCount > 0 && (
+              <span className="text-[11px] text-emerald-400">{upcomingCohortCount} upcoming</span>
+            )}
+          </div>
 
           {cohorts.length === 0 ? (
             <div className="rounded-2xl border border-border bg-card p-6 text-center text-[13px] text-muted-foreground">
@@ -300,6 +291,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 const enrolled = enrolledCohortIds.has(cohort.id)
                 const startsAt = new Date(cohort.starts_at)
                 const isUpcoming = startsAt.getTime() > Date.now()
+                const isActive = cohort.status === 'active'
 
                 return (
                   <div
@@ -314,7 +306,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                          {cohort.status === 'active' ? 'Active' : isUpcoming ? 'Upcoming' : 'Past'}
+                          {isActive ? 'Active' : isUpcoming ? 'Upcoming' : 'Past'}
                         </div>
                         <div className="text-[14.5px] font-bold leading-snug">{cohort.title}</div>
                       </div>
@@ -333,6 +325,15 @@ export default async function CourseDetailPage({ params }: PageProps) {
                           {startsAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       </div>
+                      {cohort.ends_at && (
+                        <div className="flex items-center gap-1.5 text-[12px]">
+                          <Calendar size={11} className="text-muted-foreground" />
+                          <span className="text-muted-foreground">Ends</span>
+                          <span className="ml-auto font-medium tabular-nums">
+                            {new Date(cohort.ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
                       {cohort.max_seats > 0 && (
                         <div className="flex items-center gap-1.5 text-[12px]">
                           <Users size={11} className="text-muted-foreground" />
@@ -345,7 +346,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                     {!enrolled && <EnrollButton cohortId={cohort.id} />}
                     {enrolled && (
                       <Link
-                        href={`/dashboard`}
+                        href="/dashboard"
                         className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-border bg-card px-4 py-2 text-[12.5px] font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         Go to dashboard <ChevronRight size={12} />
@@ -356,15 +357,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
               })}
             </div>
           )}
-
-          {/* Trust strip */}
-          <div className="rounded-2xl border border-border bg-gradient-to-br from-primary/[0.06] to-accent/[0.04] p-4 text-[11.5px] leading-relaxed text-muted-foreground">
-            <div className="mb-2 flex items-center gap-2 text-foreground">
-              <Sparkles size={13} className="text-primary" />
-              <span className="font-semibold">Cohort-based · enterprise-ready</span>
-            </div>
-            Live office hours · 1:1 instructor feedback · shared Slack channel · capstone project review.
-          </div>
         </aside>
       </div>
     </main>
