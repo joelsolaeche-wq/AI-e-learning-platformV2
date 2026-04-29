@@ -1,127 +1,197 @@
 ---
 phase: 05-quiz-engine
-reviewed: 2026-04-28T00:00:00Z
+reviewed: 2026-04-29T00:00:00Z
 depth: standard
-files_reviewed: 6
+files_reviewed: 11
 files_reviewed_list:
-  - components/ui/radio-group.tsx
-  - components/ui/progress.tsx
-  - supabase/migrations/20260428000008_quiz_rls.sql
   - app/api/quiz/submit/route.ts
-  - components/QuizSection.tsx
   - app/dashboard/lesson/[lessonId]/page.tsx
+  - components/QuizSection.tsx
+  - components/VideoPlayer.tsx
+  - components/ui/button.tsx
+  - components/ui/card.tsx
+  - components/ui/label.tsx
+  - components/ui/progress.tsx
+  - components/ui/radio-group.tsx
+  - supabase/migrations/20260428000008_quiz_rls.sql
+  - supabase/seed.sql
 findings:
   critical: 4
-  warning: 4
+  warning: 6
   info: 2
-  total: 10
+  total: 12
 status: issues_found
 ---
 
 # Phase 05: Code Review Report
 
-**Reviewed:** 2026-04-28T00:00:00Z
+**Reviewed:** 2026-04-29T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 6
+**Files Reviewed:** 11
 **Status:** issues_found
 
 ## Summary
 
-Six files were reviewed covering the full quiz engine stack: two UI primitives, one RLS migration, one API route handler, and two React components (client and server). The implementation is structurally sound and correctly applies the key security principle of server-side scoring. However, four blockers were found. The most serious is an authorization gap in the submit route: the server fetches `quiz_definitions` using the anon-key Supabase client that operates under the updated RLS policy from migration 00008, but that policy only gates _read_ access — it does not verify that the user is actually enrolled in the course the submitted `lessonId` belongs to. An unauthenticated-but-session-holding user with a lessonId from any course can submit a quiz attempt and receive a scored result backed by the server's DB fetch. A second blocker is that `lessonId` received from the client is used raw in DB queries without UUID format validation, enabling potential injection of crafted strings. Two additional blockers relate to silent data integrity failures in the submit route. Four warnings cover UI logic bugs and a missing RLS INSERT policy.
+Reviewed the full quiz engine implementation: the submit API route, lesson page Server Component, `QuizSection` and `VideoPlayer` client components, four shadcn/base-ui primitives, the quiz RLS tightening migration, and the demo seed file.
+
+The server-side scoring architecture is sound — the answer key is correctly stripped before client delivery, scoring is performed server-side, and the lesson-completion gate is enforced in the API handler. The most serious findings are: (1) the lessons RLS policy from migration 00004 does not filter by `enrollment.status`, meaning dropped/completed users retain lesson read access and can bypass the API-layer enrollment gate; (2) the enrollment lookup in the submit route uses an unsupported PostgREST deep-join filter syntax that silently never matches, so `cohort_id` is recorded incorrectly on every quiz attempt; (3) `VideoPlayer` has a double-completion race that fires two progress saves and two `router.refresh()` calls simultaneously; (4) the seed file inserts `auth.users` rows with empty `encrypted_password` strings, which violates Supabase gotrue invariants and can break `db reset` on CI.
 
 ---
 
 ## Critical Issues
 
-### CR-01: No enrollment authorization check in submit route — any enrolled user can submit for any lesson
+### CR-01: Lessons RLS missing enrollment-status filter — dropped users bypass access gate
 
-**File:** `app/api/quiz/submit/route.ts:39-48`
+**File:** `supabase/migrations/20260428000004_lesson_enrollment_rls.sql:28-40`
 
-**Issue:** The lesson-completion gate only verifies that `lesson_progress.completed = true` for the submitted `lessonId`. It does not verify that the authenticated user is enrolled in a cohort whose course contains that lesson. An attacker with a valid session but enrolled in Course A can submit `lessonId` values for Course B (or any lesson they have obtained the UUID for via network inspection or another user). The `lesson_progress` check is bypassable: if an admin or seed script has inserted a completed row for a user/lesson pair they are not enrolled in, the gate passes. The RLS policy on `quiz_definitions` (migration 00008) gates SELECT but does not produce a useful 403 at the application layer — it silently returns null, which would return a 404. For correctness the route must explicitly verify enrollment before scoring.
+**Issue:** The `enrolled users can view lessons` policy has no `e.status = 'active'` predicate:
 
-**Fix:**
-```typescript
-// After auth check, before lesson_progress check, add:
-const { data: enrollmentCheck } = await supabase
+```sql
+exists (
+  select 1
+  from public.enrollments e
+  join public.cohorts c on c.id = e.cohort_id
+  join public.modules m on m.course_id = c.course_id
+  where e.user_id = auth.uid()
+    and m.id = lessons.module_id
+  -- status = 'active' is absent
+)
+```
+
+A user whose enrollment status is `'dropped'` or `'completed'` passes this check because there is no status filter. Since the submit route's enrollment authorization check (line 49-61 of `route.ts`) piggybacks on this RLS policy by querying `lessons.eq('id', lessonId)`, a dropped user can also pass the quiz submit authorization gate, submit quiz attempts, and receive scored results — a full authorization bypass for all users whose enrollment has been revoked.
+
+**Fix:** Add a corrective migration that drops and recreates the policy:
+
+```sql
+drop policy if exists "enrolled users can view lessons" on public.lessons;
+
+create policy "enrolled users can view lessons"
+  on public.lessons
+  for select
+  using (
+    exists (
+      select 1
+      from public.enrollments e
+      join public.cohorts c on c.id = e.cohort_id
+      join public.modules m on m.course_id = c.course_id
+      where e.user_id = auth.uid()
+        and m.id = lessons.module_id
+        and e.status = 'active'   -- required
+    )
+  );
+```
+
+---
+
+### CR-02: PostgREST deep-join filter is silently ignored — cohort_id is always recorded incorrectly
+
+**File:** `app/api/quiz/submit/route.ts:136-148`
+
+**Issue:** The enrollment lookup uses:
+
+```ts
+.select('cohort_id, cohorts!inner(course_id, modules!inner(lessons!inner(id)))')
+.eq('cohorts.modules.lessons.id', lessonId)
+```
+
+PostgREST does not support dot-path filters on nested embedded relations in the `select()` + `eq()` form. The `.eq('cohorts.modules.lessons.id', lessonId)` filter is silently discarded. The query returns the first active enrollment for the user regardless of whether that enrollment's course contains the lesson. With a single active enrollment the value is accidentally correct; with multiple enrollments it records the wrong cohort. This corrupts Phase 6 cohort-progress aggregation for any multi-enrolled user.
+
+**Fix:** Replace with a two-step sequential lookup that PostgREST can actually execute:
+
+```ts
+// Step 1: resolve the course containing this lesson
+type LessonModuleRow = { modules: { course_id: string } }
+const { data: lessonModule } = await supabase
   .from('lessons')
-  .select('id')
+  .select('modules!inner(course_id)')
   .eq('id', lessonId)
   .maybeSingle()
+const courseId = (lessonModule as unknown as LessonModuleRow | null)?.modules?.course_id ?? null
 
-// RLS on lessons (migration 00004) gates this to enrolled users only.
-// If RLS blocks it, data will be null — treat as unauthorized.
-if (!enrollmentCheck) {
-  return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+// Step 2: find the active enrollment for that specific course
+type EnrollmentRow = { cohort_id: string }
+const { data: rawEnrollment, error: enrollError } = courseId
+  ? await supabase
+      .from('enrollments')
+      .select('cohort_id')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .eq('cohort_id',
+        supabase.from('cohorts').select('id').eq('course_id', courseId)
+      )
+      .maybeSingle()
+  : { data: null, error: null }
+
+if (enrollError) {
+  console.error('[quiz submit] enrollment cohort lookup error', enrollError)
 }
-```
-This piggybacks on the already-correct enrollment-scoped lessons RLS from migration 00004, adding a single cheap query without duplicating join logic.
-
----
-
-### CR-02: `lessonId` is not validated as a UUID before use in DB queries
-
-**File:** `app/api/quiz/submit/route.ts:27-32`
-
-**Issue:** `lessonId` is accepted from the client request body and used directly in four `.eq('lesson_id', lessonId)` and `.eq('id', lessonId)` PostgREST calls. PostgREST passes the value as a parameter to the underlying Postgres query, so classic SQL injection is not the vector here. The real risk is that PostgREST will return an HTTP 400 or 500 error from Supabase when a malformed string is passed as a UUID column predicate, and those errors are silently swallowed by the `maybeSingle()` + `as unknown as` pattern — the code treats a Supabase error the same as "row not found". For `quiz_definitions` this means a crafted non-UUID `lessonId` causes `def` to be null and returns a clean 404, masking the underlying error. More seriously: the error from the `lesson_progress` check is also discarded, which means the completion gate silently passes when PostgREST errors, allowing the route to reach the scoring block with `undefined` progress.
-
-**Fix:**
-```typescript
-// Add at line 26, after destructuring lessonId and answers:
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-if (!UUID_RE.test(lessonId)) {
-  return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
-}
+const cohortId = (rawEnrollment as unknown as EnrollmentRow | null)?.cohort_id ?? null
 ```
 
 ---
 
-### CR-03: Supabase errors are silently discarded in the lesson-completion gate — gate can be bypassed
+### CR-03: VideoPlayer double-completion race — two simultaneous progress saves and router.refresh() calls
 
-**File:** `app/api/quiz/submit/route.ts:39-49`
+**File:** `components/VideoPlayer.tsx:37-51`
 
-**Issue:** The `lesson_progress` query destructures only `data`, discarding `error`:
-```typescript
-const { data: rawProgress } = await supabase
-  .from('lesson_progress')
-  ...
-  .maybeSingle()
+**Issue:** When a user watches past 90% of a video, `handleTimeUpdate` fires first: it sets `completedRef.current = true`, calls `saveProgress(pos, true)`, and chains `router.refresh()`. Immediately after, when the video ends, `handleEnded` fires unconditionally and calls `saveProgress(duration, true)` and `router.refresh()` again. Both handlers are independent — `handleEnded` has no guard. The result is two concurrent `POST /api/video/progress` requests and two queued `router.refresh()` calls, causing a double Server Component re-render and two upsert writes.
+
+More critically, `completedRef.current = true` is set synchronously before `saveProgress` resolves. If the `saveProgress` fetch fails (the catch in `saveProgress` swallows all errors silently), completion is permanently lost with no indication to the user and no retry path.
+
+**Fix:** Guard `handleEnded` with the same ref, and surface `saveProgress` failures:
+
+```ts
+const handleEnded = useCallback(() => {
+  if (completedRef.current) return  // already handled by handleTimeUpdate
+  completedRef.current = true
+  saveProgress(duration, true).then(() => router.refresh())
+}, [duration, saveProgress, router])
 ```
-If this query fails (network error, Supabase outage, invalid UUID as described in CR-02, RLS misconfiguration), `rawProgress` is `null` and `progress?.completed` evaluates to `undefined`, which is falsy — the route correctly returns 403. However if the **quiz_definitions** query at line 54 fails for the same reasons, `def` is null and the route returns 404, stopping processing before the score is computed. The dangerous case is the **enrollment query** at line 91-96: its error is also silently discarded, but since `cohortId` only populates a nullable FK, a failure here goes unnoticed and the attempt is recorded with `cohort_id = null`. This corrupts downstream Phase 6 cohort-progress queries that depend on the populated FK, silently introducing data integrity failures with no log entry.
 
-**Fix:**
-```typescript
-// Destructure and check error for each critical query:
-const { data: rawProgress, error: progressError } = await supabase
-  .from('lesson_progress')
-  .select('completed')
-  .eq('user_id', user.id)
-  .eq('lesson_id', lessonId)
-  .maybeSingle()
+For resilience, set `completedRef` only after the save succeeds in `handleTimeUpdate`:
 
-if (progressError) {
-  console.error('[quiz submit] lesson_progress query error', progressError)
-  return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+```ts
+if (pct >= 0.9 && !completedRef.current) {
+  completedRef.current = true
+  saveProgress(pos, true).then(() => router.refresh())
+  return
 }
-
-// Same pattern for quiz_definitions and enrollment queries.
 ```
+
+This is already the current code, so the main fix is adding the early-return guard in `handleEnded`.
 
 ---
 
-### CR-04: `answers` array-type bypass — `Array.isArray` check missing allows poisoned scoring
+### CR-04: Seed file inserts auth.users rows with empty encrypted_password — violates gotrue invariants
 
-**File:** `app/api/quiz/submit/route.ts:27-32`
+**File:** `supabase/seed.sql:291-299`
 
-**Issue:** The validation guard at line 27 checks `typeof answers !== 'object'`. In JavaScript, `Array.isArray([]) === true` and `typeof [] === 'object'`, so a client that sends `answers: ["a", "b"]` passes the guard. Downstream, `answers[q.id]` where `q.id` is a UUID string is used as an array index accessor. On a JavaScript array, a non-integer string index returns `undefined`, so every question scores as incorrect — this is not a security bypass in the scoring direction. However the `answers` value is then persisted to the DB as-is via `answers: answers as Record<string, string>` in `insertData`. Persisting an array into a `jsonb` column typed as an object map is a data integrity violation that corrupts the attempt record and any future replay/audit logic.
+**Issue:** The two teammate stub rows are inserted with `encrypted_password: ''`. Supabase's gotrue service requires a non-empty bcrypt hash for email-provider accounts. An empty string is stored successfully in Postgres but causes gotrue to reject any sign-in or password-reset attempt for those users, and under certain Supabase versions triggers schema validation errors on service restart or `db reset`. On Supabase Cloud, direct inserts into `auth.users` without a valid `confirmation_token` can leave the row in a state that causes gotrue to log errors on every auth event.
+
+These rows exist only as FK anchors for `public.profiles` and `public.enrollments`. A malformed auth row can cause `npx supabase db reset` to fail or produce warnings in CI.
+
+**Fix:** Use a valid bcrypt hash placeholder for demo accounts:
+
+```sql
+encrypted_password = crypt('ChangeMe123!', gen_salt('bf'))
+```
+
+Or, to avoid inserting into the managed `auth` schema entirely, use a deferred FK with `set session_replication_role = replica` in the seed and insert only into `public.profiles` and `public.enrollments`.
+
+---
+
+## Warnings
+
+### WR-01: answers array-type bypass — Array.isArray check missing
+
+**File:** `app/api/quiz/submit/route.ts:39-44`
+
+**Issue:** The validation at line 39 checks `typeof answers !== 'object'`. In JavaScript `typeof [] === 'object'` and `Array.isArray([]) === true`, so `answers: ["a","b"]` passes the guard. The downstream `answers[q.id]` accessor returns `undefined` for every UUID key on an array — all questions score as incorrect. The array value is then persisted as-is into the `jsonb` `answers` column, storing an array where an object map is expected. This corrupts audit/replay logic.
 
 **Fix:**
-```typescript
-if (
-  !lessonId ||
-  !answers ||
-  typeof answers !== 'object' ||
-  Array.isArray(answers)
-) {
+
+```ts
+if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
   return NextResponse.json(
     { error: 'Missing required fields: lessonId and answers are required' },
     { status: 400 }
@@ -129,128 +199,172 @@ if (
 }
 ```
 
----
-
-## Warnings
-
-### WR-01: RESULTS view shows correct-answer annotation twice when user selected wrong answer
-
-**File:** `components/QuizSection.tsx:264-275`
-
-**Issue:** For a wrong answer, both annotation blocks render simultaneously. Line 264 checks `isSelected && !item.correct && isCorrect` — this condition is impossible: if the user selected this option (`isSelected === true`) and got it wrong (`!item.correct === true`), then `isSelected === item.selectedAnswer` means this option is the selected (wrong) one, not the correct one — so `isCorrect` (i.e. `option === item.correctAnswer`) will be `false`. The block at line 264 never renders. The correct-answer reveal only ever comes from the block at lines 270-273 (`!isSelected && isCorrect && !item.correct`). The dead block at 264 is unreachable code that indicates a logic analysis error and should be removed to prevent future maintainers from introducing bugs while trying to "fix" it.
-
-**Fix:** Remove lines 263-267 entirely. The block at lines 270-273 is the correct and sole correct-answer reveal for wrong answers.
+This fix is straightforward and was identified in the previous review pass. The current code does NOT include this fix — it was listed as CR-04 in the prior review but is absent from the submitted `route.ts`.
 
 ---
 
-### WR-02: Missing RLS INSERT policy on `quiz_definitions` — direct client inserts are ungated
+### WR-02: quiz/submit route — lessonId not validated as UUID before DB queries
 
-**File:** `supabase/migrations/20260428000008_quiz_rls.sql` (cross-referenced with `20260428000002_create_remaining_tables.sql`)
+**File:** `app/api/quiz/submit/route.ts:25-34`
 
-**Issue:** Migration 00002 creates RLS on `quiz_definitions` with only a SELECT policy. Migration 00008 replaces that SELECT policy with an enrollment-scoped one. Neither migration creates INSERT, UPDATE, or DELETE policies on `quiz_definitions`. With RLS enabled and no permissive write policy, writes from the anon/authenticated role are blocked by default in Supabase — this is the safe default. However it means no explicit deny-by-intent is documented, and a future migration that accidentally adds a broad write policy would silently open the table. More immediately: the server-side route handler uses the anon-key client, which means if a service-role client is ever introduced carelessly, quiz questions including `correct_answer` could be modified by an enrolled user who knows the quiz_definition ID.
+**Issue:** The current file (lines 31-34) does include a UUID regex validation — however the previous review pass (CR-02) flagged its absence and it was added. Confirming this is present and correct. No action needed for this specific item.
 
-**Fix:** Add an explicit comment in the migration or a restrictive policy to document the intent:
-```sql
--- Explicitly document: no write access for authenticated role.
--- quiz_definitions are managed by service_role (admin tooling) only.
--- RLS default-deny covers INSERT/UPDATE/DELETE; this comment is intentional.
+**Note:** The UUID validation is present at lines 31-34. This warning is downgraded to confirmed-fixed.
+
+---
+
+### WR-03: LessonPage — chat history messages query error is silently discarded
+
+**File:** `app/dashboard/lesson/[lessonId]/page.tsx:100-107`
+
+**Issue:** The IIFE fetching `ai_chat_messages` discards the query error:
+
+```ts
+const { data: messagesData } = await supabase
+  .from('ai_chat_messages')
+  ...
 ```
 
----
-
-### WR-03: Enrollment cohort lookup is not scoped to the lesson's course — wrong cohort_id can be recorded
-
-**File:** `app/api/quiz/submit/route.ts:91-98`
-
-**Issue:** The enrollment query fetches `cohort_id` with only `user_id = user.id` and `status = 'active'`. If a user is enrolled in multiple active cohorts (e.g., they were added to two cohorts for different courses, or re-enrolled after dropping), `maybeSingle()` will throw a PostgREST error (multiple rows returned) which is silently discarded, leaving `cohort_id = null`. Even if only one active enrollment exists, it may belong to a different course than the one containing `lessonId`. The attempt is then recorded with a cohort_id that does not correspond to the lesson's course, corrupting the Phase 6 cohort-progress aggregation.
+If this query fails (RLS violation, network error), `messagesData` is `null`, the IIFE returns `[]`, and the chat panel renders as empty. The user's chat history silently disappears with no indication of failure. This is a data-loss-from-user-perspective issue.
 
 **Fix:**
-```typescript
-// Scope enrollment lookup to the lesson's course via a join:
-const { data: rawEnrollment, error: enrollError } = await supabase
-  .from('enrollments')
-  .select('cohort_id')
-  .eq('user_id', user.id)
-  .eq('status', 'active')
-  .eq('cohort_id',
-    supabase
-      .from('cohorts')
-      .select('id')
-      .eq('course_id',
-        supabase
-          .from('modules')
-          .select('course_id')
-          .eq('id',
-            supabase.from('lessons').select('module_id').eq('id', lessonId).single()
-          ).single()
-      )
-  )
-  .maybeSingle()
+
+```ts
+const { data: messagesData, error: msgsError } = await supabase
+  .from('ai_chat_messages')
+  .select('id, role, content, created_at')
+  .eq('session_id', (sessionData as unknown as { id: string }).id)
+  .order('created_at', { ascending: true })
+  .limit(20)
+
+if (msgsError) {
+  console.error('[lesson page] ai_chat_messages fetch error', msgsError)
+}
+return (messagesData ?? []) as unknown as ChatMessageRow[]
 ```
-Alternatively, perform a single join query: `enrollments e JOIN cohorts c ON c.id = e.cohort_id JOIN modules m ON m.course_id = c.course_id JOIN lessons l ON l.module_id = m.id WHERE l.id = lessonId AND e.user_id = auth.uid() AND e.status = 'active'`.
 
 ---
 
-### WR-04: `Progress` component unconditionally renders `ProgressTrack` + `ProgressIndicator` as siblings to `children` — layout break when `children` are present
+### WR-04: QuizSection submit error — all HTTP error codes produce the same user message
 
-**File:** `components/ui/progress.tsx:14-26`
+**File:** `components/QuizSection.tsx:80-87`
 
-**Issue:** The `Progress` component wraps `ProgressPrimitive.Root` with `flex flex-wrap gap-3` and renders both `{children}` and a `<ProgressTrack>` unconditionally. If the caller passes children (e.g. `<ProgressLabel>` or `<ProgressValue>`), those children render as flex siblings to the track — the intended layout. However `<QuizSection>` at line 221 uses `<Progress value={results.pct} className="h-2 mt-2" />` with no children. In this case the outer Root element has `className="flex flex-wrap gap-3 h-2 mt-2"` but the inner `ProgressTrack` has `className="relative flex h-1 w-full ..."`. The root element is `h-2` (8px) while the track is `h-1` (4px) — these heights conflict and the visual result depends on browser flex behavior. Additionally the `gap-3` on the root adds 12px of gap even when there are no children, wasting vertical space. The `h-2` override from the caller is also semantically wrong — it should target the track, not the root.
+**Issue:** The error handler checks only `res.ok`, then throws a generic error:
 
-**Fix:** Either document that `className` on `<Progress>` targets the root (not the track) and callers must use `<ProgressTrack className="h-2">` explicitly, or expose a `trackClassName` prop to pass through to the track:
-```typescript
-function Progress({
-  className,
-  trackClassName,
-  children,
-  value,
-  ...props
-}: ProgressPrimitive.Root.Props & { trackClassName?: string }) {
-  return (
-    <ProgressPrimitive.Root
-      value={value}
-      data-slot="progress"
-      className={cn("flex flex-wrap gap-3", className)}
-      {...props}
-    >
-      {children}
-      <ProgressTrack className={trackClassName}>
-        <ProgressIndicator />
-      </ProgressTrack>
-    </ProgressPrimitive.Root>
-  )
+```ts
+if (!res.ok) throw new Error('submit failed')
+```
+
+A 403 "Lesson not completed" and a 500 "Failed to save attempt" both produce `"Couldn't submit quiz — try again"`. A user who legitimately has not completed the lesson retries indefinitely with no actionable guidance. The `catch` block also silently discards the error message, replacing it with the hardcoded string.
+
+**Fix:**
+
+```ts
+if (!res.ok) {
+  const body = await res.json().catch(() => ({}))
+  const msg =
+    res.status === 403
+      ? (body.error ?? 'Complete the lesson before submitting the quiz.')
+      : res.status === 404
+      ? 'Quiz not found.'
+      : "Couldn't submit quiz — try again."
+  throw new Error(msg)
+}
+// ...
+} catch (err) {
+  setSubmitError(err instanceof Error ? err.message : "Couldn't submit quiz — try again")
+  setQuizState('ACTIVE')
 }
 ```
 
 ---
 
-## Info
+### WR-05: quiz/submit — zero-question quiz persists a meaningless attempt record
 
-### IN-01: Dead `SUBMITTED` state branch — `quizState` transitions directly to `ACTIVE` on error, not to `SUBMITTED`
+**File:** `app/api/quiz/submit/route.ts:114-127`
 
-**File:** `components/QuizSection.tsx:70-88`
-
-**Issue:** `handleSubmit` sets state to `SUBMITTED` at line 72, then on catch at line 86 sets it back to `ACTIVE`. The `SUBMITTED` state renders a disabled "Submitting..." button. This is functionally correct as an optimistic loading state. However the `SUBMITTED` render block at lines 187-198 is a dead end: there is no code path that leaves the component in `SUBMITTED` permanently (it always transitions to either `RESULTS` or `ACTIVE`). This is fine intentionally, but a code reader or future developer adding retry logic may be confused about whether `SUBMITTED` is a terminal or transient state. A comment clarifying intent would prevent incorrect assumptions.
+**Issue:** If `def.questions` is an empty array (a quiz_definition with `questions: []` is valid per the DB schema), `total` is `0`, `pct` is `0`, and an attempt row is inserted with `score=0, max_score=0`. The client receives `{ score: 0, total: 0, pct: 0 }` and renders "0 / 0 — 0%". There is no guard for this case, yet there is already a 404 guard when `def` is null.
 
 **Fix:**
-```typescript
-// SUBMITTED is a transient in-flight state — always transitions to RESULTS (success)
-// or back to ACTIVE (error). It is never a terminal state.
-if (quizState === 'SUBMITTED') {
+
+```ts
+if (!questions || questions.length === 0) {
+  return NextResponse.json({ error: 'Quiz has no questions' }, { status: 422 })
+}
+```
+Add this after the `def` null check at line 102.
+
+---
+
+### WR-06: video/progress route — lessonId not validated as UUID; PostgREST error returns 403 instead of 400
+
+**File:** `app/api/video/progress/route.ts:32-44`
+
+**Issue:** The progress route validates that `lessonId` is truthy and that `position >= 0`, but does not validate UUID format. A client sending a malformed `lessonId` causes PostgREST to return a query error, which makes `lessonError` truthy, and the route returns 403 Forbidden. The correct HTTP status for a malformed input is 400 Bad Request. This is an inconsistency with the quiz submit route (which does validate UUID format) and gives the caller a misleading error code.
+
+**Fix:**
+
+```ts
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+if (!lessonId || !UUID_RE.test(lessonId)) {
+  return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
+}
+```
+Add after the existing `lessonId` presence check at line 32.
+
+---
+
+## Info
+
+### IN-01: QuizSection — RESULTS fallthrough to null is silent (unreachable but undefended)
+
+**File:** `components/QuizSection.tsx:203`
+
+**Issue:** The RESULTS state branch is guarded by `quizState === 'RESULTS' && results`. If `results` is null while `quizState` is `'RESULTS'` (theoretically unreachable in the current state machine), the component falls to `return null` at line 292, rendering nothing. The comment "should not be reachable" is correct for the current implementation. A future refactor that adds an async retake path or resets `results` independently could inadvertently introduce a blank render.
+
+**Fix:** Replace the final `return null` with a minimal fallback:
+
+```tsx
+// Fallback (should not be reachable; guards against future state desync)
+return (
+  <section className="space-y-4">
+    <h2 className="text-lg font-semibold">Post-Lesson Quiz</h2>
+    <Card>
+      <CardContent className="py-10 text-center text-sm text-muted-foreground">
+        Something went wrong. Please refresh the page.
+      </CardContent>
+    </Card>
+  </section>
+)
 ```
 
 ---
 
-### IN-02: `quiz_definitions` RLS migration does not drop or update the companion INSERT/UPDATE/DELETE policies that do not exist — no forward-compatibility guard
+### IN-02: quiz/submit — as never cast on insert bypasses schema type-safety
 
-**File:** `supabase/migrations/20260428000008_quiz_rls.sql:15-16`
+**File:** `app/api/quiz/submit/route.ts:163`
 
-**Issue:** The migration correctly uses `drop policy if exists` for the old SELECT policy. However the comment block at lines 1-11 only describes replacing the SELECT policy. If a future migration adds write policies to `quiz_definitions` and is later rolled back, migration 00008 will not clean up those write policies. This is a minor forward-compatibility concern, not a current bug. The migration could be more defensive.
+**Issue:** `supabase.from('quiz_attempts').insert(insertData as never)` uses `as never` to suppress a PostgREST 14.5 schema inference error. This is the most unsafe TypeScript cast — it converts the value to the bottom type and silences all downstream type errors, including future schema changes (column additions, renames, removed nullable constraints) that would otherwise be caught at compile time. The project notes this as a known workaround in STATE.md.
 
-**Fix:** No code change required. Add a comment noting that write policies are intentionally absent and should only be added with explicit service_role scoping.
+**Fix:** When the Supabase SDK is upgraded past the schema inference bug, replace with a typed insert:
+
+```ts
+import type { TablesInsert } from '@/lib/database.types'
+const insertData: TablesInsert<'quiz_attempts'> = {
+  user_id: user.id,
+  lesson_id: lessonId,
+  cohort_id: cohortId,
+  answers: answers as Record<string, string>,
+  score,
+  max_score: total,
+}
+const { error: insertError } = await supabase.from('quiz_attempts').insert(insertData)
+```
+
+Track the Supabase SDK changelog for the fix.
 
 ---
 
-_Reviewed: 2026-04-28T00:00:00Z_
+_Reviewed: 2026-04-29T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
