@@ -126,26 +126,45 @@ export async function POST(request: Request) {
   const total = questions.length
   const pct = total > 0 ? Math.round((score / total) * 100) : 0
 
-  // Look up cohort_id via enrollment join — populates the nullable FK so Phase 6
-  // and dashboard queries can filter by cohort. Falls back to null if not found.
-  // WR-03: Scope the enrollment lookup to the lesson's course via a join so we
-  // record the correct cohort_id even when a user has multiple active enrollments.
-  // CR-03: Destructure error; log and fall back to null rather than silently
-  // recording a wrong cohort_id that corrupts Phase 6 cohort-progress aggregation.
-  type EnrollmentRow = { cohort_id: string }
-  const { data: rawEnrollment, error: enrollError } = await supabase
-    .from('enrollments')
-    .select('cohort_id, cohorts!inner(course_id, modules!inner(lessons!inner(id)))')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .eq('cohorts.modules.lessons.id', lessonId)
+  // Look up cohort_id via a two-step sequential lookup so PostgREST can
+  // actually execute both queries. The single-step deep-join filter
+  // (.eq('cohorts.modules.lessons.id', lessonId)) is silently ignored by
+  // PostgREST and returns the wrong cohort for multi-enrolled users.
+  //
+  // Step 1: resolve the course_id containing this lesson.
+  type LessonModuleRow = { modules: { course_id: string } }
+  const { data: lessonModule } = await supabase
+    .from('lessons')
+    .select('modules!inner(course_id)')
+    .eq('id', lessonId)
     .maybeSingle()
+  const courseId = (lessonModule as unknown as LessonModuleRow | null)?.modules?.course_id ?? null
+
+  // Step 2: find the active enrollment for that specific course.
+  type EnrollmentRow = { cohort_id: string }
+  type CohortRow = { id: string }
+  const { data: rawEnrollment, error: enrollError } = courseId
+    ? await (async () => {
+        const { data: cohortRows } = await supabase
+          .from('cohorts')
+          .select('id')
+          .eq('course_id', courseId)
+        const cohortIds = ((cohortRows ?? []) as unknown as CohortRow[]).map((r) => r.id)
+        if (cohortIds.length === 0) return { data: null, error: null }
+        return supabase
+          .from('enrollments')
+          .select('cohort_id')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .in('cohort_id', cohortIds)
+          .maybeSingle()
+      })()
+    : { data: null, error: null }
 
   if (enrollError) {
     console.error('[quiz submit] enrollment cohort lookup error', enrollError)
   }
-  const enrollment = rawEnrollment as unknown as EnrollmentRow | null
-  const cohortId = enrollment?.cohort_id ?? null
+  const cohortId = (rawEnrollment as unknown as EnrollmentRow | null)?.cohort_id ?? null
 
   // Persist attempt — multiple attempts per (user_id, lesson_id) are allowed (retake = new row).
   // NOTE: as never cast — PostgREST 14.5 / Supabase v2.105.x schema inference workaround (STATE.md).
