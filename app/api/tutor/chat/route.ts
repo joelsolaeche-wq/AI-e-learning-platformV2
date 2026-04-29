@@ -196,7 +196,13 @@ ${transcriptSection}`
         } as never)
 
       if (assistantMsgError) {
-        console.error('[tutor chat] assistant message insert error', assistantMsgError)
+        // In production: report to error tracking (Sentry, etc.).
+        // The stream has already been sent to the client, so the user saw the
+        // message but it will be missing from DB history on next page load.
+        console.error('[tutor chat] CRITICAL: assistant message persistence failed', {
+          sessionId: session.id,
+          error: assistantMsgError,
+        })
       }
     },
   })
