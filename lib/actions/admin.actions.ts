@@ -3,8 +3,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { randomBytes } from 'crypto'
 
 export type AdminActionResult = { error: string | null; success?: boolean }
+
+export type ImportResult = {
+  created: number
+  skipped: number
+  errors: Array<{ row: number; email: string; reason: string }>
+}
 
 async function assertAdmin() {
   const supabase = await createClient()
@@ -88,4 +95,78 @@ export async function adminUpdateUserAction(
   revalidatePath('/admin/users')
   revalidatePath(`/admin/users/${userId}`)
   return { error: null, success: true }
+}
+
+export async function importUsersFromCSVAction(
+  _prevState: ImportResult | null,
+  formData: FormData,
+): Promise<ImportResult> {
+  const caller = await assertAdmin()
+  if (!caller) {
+    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'No autorizado.' }] }
+  }
+
+  type RowInput = { full_name: string; email: string; role: string }
+  let rows: RowInput[]
+  try {
+    rows = JSON.parse(formData.get('rows') as string)
+  } catch {
+    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'Payload inválido.' }] }
+  }
+
+  const admin = createAdminClient()
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  const VALID_ROLES = ['learner', 'instructor', 'admin']
+  let created = 0
+  let skipped = 0
+  const errors: ImportResult['errors'] = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const raw = rows[i]
+    const email = String(raw.email ?? '').trim().toLowerCase()
+    const fullName = String(raw.full_name ?? '').trim() || null
+    const role = String(raw.role ?? 'learner').trim().toLowerCase()
+
+    if (!email || !EMAIL_RE.test(email)) {
+      errors.push({ row: i + 1, email, reason: 'Email inválido.' })
+      continue
+    }
+    if (!VALID_ROLES.includes(role)) {
+      errors.push({ row: i + 1, email, reason: `Rol inválido: "${role}". Usar learner, instructor o admin.` })
+      continue
+    }
+
+    // Skip if profile already exists
+    const { data: existing } = await admin
+      .from('profiles')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle()
+
+    if (existing) { skipped++; continue }
+
+    // Create auth user with a random temp password (user can reset via forgot-password)
+    const tempPassword = randomBytes(12).toString('base64url')
+    const { data: authData, error: createError } = await admin.auth.admin.createUser({
+      email,
+      password: tempPassword,
+      email_confirm: true,
+    })
+
+    if (createError || !authData.user) {
+      errors.push({ row: i + 1, email, reason: createError?.message ?? 'Error al crear usuario.' })
+      continue
+    }
+
+    // Trigger creates the profile row; update it with name + role
+    await admin
+      .from('profiles')
+      .update({ full_name: fullName, role, updated_at: new Date().toISOString() })
+      .eq('id', authData.user.id)
+
+    created++
+  }
+
+  revalidatePath('/admin/users')
+  return { created, skipped, errors }
 }
