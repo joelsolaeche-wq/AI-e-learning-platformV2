@@ -45,8 +45,9 @@ export async function requestPasswordResetAction(
   if (!email) return { error: 'El email es requerido.' }
 
   const supabase = await createClient()
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/auth/update-password`,
+    redirectTo: `${siteUrl}/auth/callback?next=/auth/update-password`,
   })
 
   if (error) return { error: error.message }

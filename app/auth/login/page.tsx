@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { signInAction } from '@/lib/actions/auth.actions'
+import { PasswordInput } from '@/components/ui/password-input'
 
 const initialState = { error: null }
 
@@ -56,10 +57,9 @@ export default function LoginPage() {
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 placeholder="••••••••"
                 autoComplete="current-password"
                 required
