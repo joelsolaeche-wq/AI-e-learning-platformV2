@@ -4,8 +4,8 @@ import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { updateProfileAction } from '@/lib/actions/profile.actions'
 import { cn } from '@/lib/utils'
+import { updateProfileAction } from '@/lib/actions/profile.actions'
 
 const PRESET_AVATARS = [
   { id: 'violet-hex', bg: 'from-violet-500 to-purple-600', symbol: '✦' },
@@ -44,7 +44,7 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
 
   return (
     <form action={formAction} className="space-y-8">
-      {/* Hidden field carries the final avatar value */}
+      {/* Single hidden field carries the resolved avatar value to the server action */}
       <input type="hidden" name="avatar_url" value={avatarValue} />
 
       {state?.error && (
@@ -83,12 +83,15 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
             )
           })}
         </div>
+
+        {/* Native input to avoid Base UI controlled/uncontrolled conflict */}
         <div className="flex items-center gap-2">
-          <Input
+          <input
+            type="text"
             value={urlInput}
             onChange={(e) => handleUrlChange(e.target.value)}
             placeholder="O pegá una URL de imagen…"
-            className="max-w-sm text-sm"
+            className="h-8 w-full max-w-sm rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
           {urlInput && !isPreset(urlInput) && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -105,7 +108,7 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
         </p>
       </div>
 
-      {/* Full name */}
+      {/* Full name — uncontrolled is fine here, Base UI handles defaultValue ok */}
       <div className="space-y-2">
         <Label htmlFor="full_name">Nombre completo</Label>
         <Input
