@@ -27,6 +27,7 @@ const initialState = { error: null, success: false }
 
 export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormProps) {
   const [state, formAction, isPending] = useActionState(updateProfileAction, initialState)
+  const [fullName, setFullName] = useState(initialFullName ?? '')
   const [avatarValue, setAvatarValue] = useState(initialAvatarUrl ?? '')
   const [urlInput, setUrlInput] = useState(
     initialAvatarUrl && !isPreset(initialAvatarUrl) ? initialAvatarUrl : '',
@@ -108,17 +109,18 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
         </p>
       </div>
 
-      {/* Full name — uncontrolled is fine here, Base UI handles defaultValue ok */}
+      {/* Full name — native input to avoid Base UI uncontrolled warning on re-render */}
       <div className="space-y-2">
         <Label htmlFor="full_name">Nombre completo</Label>
-        <Input
+        <input
           id="full_name"
           name="full_name"
           type="text"
           placeholder="Tu nombre"
-          defaultValue={initialFullName ?? ''}
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
           maxLength={100}
-          className="max-w-sm"
+          className="h-8 w-full max-w-sm rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
       </div>
 
