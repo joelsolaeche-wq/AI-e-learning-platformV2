@@ -24,8 +24,17 @@ interface NavItem {
   activePrefix?: string
 }
 
+const PRESET_AVATARS: Record<string, { bg: string; symbol: string }> = {
+  'violet-hex':   { bg: 'from-violet-500 to-purple-600', symbol: '✦' },
+  'cyan-wave':    { bg: 'from-cyan-400 to-blue-500',     symbol: '◈' },
+  'rose-spark':   { bg: 'from-rose-400 to-pink-500',     symbol: '❋' },
+  'amber-sun':    { bg: 'from-amber-400 to-orange-500',  symbol: '◉' },
+  'emerald-leaf': { bg: 'from-emerald-400 to-teal-500',  symbol: '◆' },
+  'indigo-star':  { bg: 'from-indigo-400 to-violet-500', symbol: '★' },
+}
+
 interface SidebarProps {
-  user: { email: string; full_name?: string | null }
+  user: { email: string; full_name?: string | null; avatar_url?: string | null }
   streakDays?: number
   lastLessonHref?: string
 }
@@ -34,6 +43,8 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
   const pathname = usePathname()
   const router = useRouter()
   const initials = (user.full_name || user.email).slice(0, 2).toUpperCase()
+  const preset = user.avatar_url ? PRESET_AVATARS[user.avatar_url] : null
+  const isUrlAvatar = user.avatar_url && !preset
 
   const NAV: NavItem[] = [
     { href: '/dashboard', label: 'Home', icon: Home },
@@ -113,9 +124,22 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
           </div>
         )}
         <div className="flex items-center gap-2.5 rounded-[10px] border border-border bg-card px-2.5 py-2">
-          <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
-            {initials}
-          </div>
+          {isUrlAvatar ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.avatar_url!}
+              alt={initials}
+              className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+            />
+          ) : preset ? (
+            <div className={cn('grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br text-sm text-white', preset.bg)}>
+              {preset.symbol}
+            </div>
+          ) : (
+            <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
+              {initials}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-[12.5px] font-semibold">{user.full_name || user.email.split('@')[0]}</div>
             <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
