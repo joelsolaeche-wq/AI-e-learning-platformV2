@@ -18,9 +18,9 @@ export default async function ProfileSettingsPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">Perfil y configuración</h1>
+        <h1 className="text-2xl font-bold">Profile & settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Actualizá tu nombre y avatar. Tu email ({profile?.email}) no puede modificarse desde aquí.
+          Update your name and avatar. Your email ({profile?.email}) cannot be changed here.
         </p>
       </div>
 
@@ -32,15 +32,15 @@ export default async function ProfileSettingsPage() {
       </div>
 
       <div className="mt-6 rounded-xl border border-border bg-card p-6">
-        <h2 className="mb-1 text-sm font-semibold">Contraseña</h2>
+        <h2 className="mb-1 text-sm font-semibold">Password</h2>
         <p className="mb-4 text-sm text-muted-foreground">
-          Para cambiar tu contraseña, usá el flujo de recuperación.
+          To change your password, use the password reset flow.
         </p>
         <a
           href="/auth/forgot-password"
           className="text-sm text-primary underline-offset-4 hover:underline"
         >
-          Cambiar contraseña →
+          Change password →
         </a>
       </div>
     </div>

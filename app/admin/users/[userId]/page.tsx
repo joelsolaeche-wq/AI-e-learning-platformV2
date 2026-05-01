@@ -31,7 +31,7 @@ export default async function AdminUserDetailPage({
           <ArrowLeft size={14} />
         </Link>
         <div>
-          <h1 className="text-xl font-bold">Editar usuario</h1>
+          <h1 className="text-xl font-bold">Edit user</h1>
           <p className="text-sm text-muted-foreground">{user.email}</p>
         </div>
       </div>

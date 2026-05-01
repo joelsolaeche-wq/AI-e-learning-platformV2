@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import {
   Home, BookOpen, PlayCircle, Trophy, Users, Flame, MoreHorizontal,
-  LogOut, User as UserIcon,
+  LogOut, User as UserIcon, ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOutAction } from '@/lib/actions/auth.actions'
@@ -28,7 +28,7 @@ const PRESET_AVATARS: Record<string, { bg: string; symbol: string }> = {
 }
 
 interface SidebarProps {
-  user: { email: string; full_name?: string | null; avatar_url?: string | null }
+  user: { email: string; full_name?: string | null; avatar_url?: string | null; role?: string | null }
   streakDays?: number
   lastLessonHref?: string
 }
@@ -123,6 +123,23 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
             </Link>
           )
         })}
+        {user.role === 'admin' && (
+          <Link
+            href="/admin/users"
+            className={cn(
+              'relative flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium transition-all',
+              pathname.startsWith('/admin')
+                ? 'bg-gradient-to-r from-violet-500/15 to-violet-500/5 text-foreground ring-1 ring-violet-500/25'
+                : 'text-muted-foreground hover:bg-white/5 hover:text-foreground',
+            )}
+          >
+            {pathname.startsWith('/admin') && (
+              <span className="absolute -left-[14px] top-2 bottom-2 w-[3px] rounded bg-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
+            )}
+            <ShieldCheck size={17} strokeWidth={1.6} />
+            <span>Admin</span>
+          </Link>
+        )}
       </nav>
 
       {/* Footer */}
@@ -189,7 +206,7 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
                 className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 role="menuitem"
               >
-                <UserIcon size={13} /> Perfil y configuración
+                <UserIcon size={13} /> Profile & settings
               </Link>
 
               <div className="my-1 h-px bg-border/60" />

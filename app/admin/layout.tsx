@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <aside className="sticky top-0 h-screen w-52 shrink-0 flex flex-col border-r border-border bg-card px-3 py-5">
         <div className="px-2 pb-4">
           <div className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Panel de Admin
+            Admin panel
           </div>
         </div>
         <nav className="flex flex-col gap-0.5">
@@ -31,7 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
           >
             <Users size={15} strokeWidth={1.6} />
-            Usuarios
+            Users
           </Link>
         </nav>
         <div className="mt-auto">
@@ -40,7 +40,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13px] text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
           >
             <LayoutDashboard size={15} strokeWidth={1.6} />
-            Ir al dashboard
+            Back to dashboard
           </Link>
         </div>
       </aside>

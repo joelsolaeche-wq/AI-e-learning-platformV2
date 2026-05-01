@@ -25,8 +25,8 @@ export default function UpdatePasswordPage() {
     <main className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Nueva contraseña</CardTitle>
-          <CardDescription>Elegí una contraseña segura de al menos 8 caracteres.</CardDescription>
+          <CardTitle className="text-2xl font-bold">New password</CardTitle>
+          <CardDescription>Choose a strong password of at least 8 characters.</CardDescription>
         </CardHeader>
 
         <form action={formAction}>
@@ -38,11 +38,11 @@ export default function UpdatePasswordPage() {
             )}
             {state?.success && (
               <div role="status" className="rounded-md bg-emerald-500/15 px-3 py-2 text-sm text-emerald-400">
-                ¡Contraseña actualizada! Redirigiendo…
+                Password updated! Redirecting…
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="password">Nueva contraseña</Label>
+              <Label htmlFor="password">New password</Label>
               <PasswordInput
                 id="password"
                 name="password"
@@ -53,7 +53,7 @@ export default function UpdatePasswordPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm">Confirmar contraseña</Label>
+              <Label htmlFor="confirm">Confirm password</Label>
               <PasswordInput
                 id="confirm"
                 name="confirm"
@@ -65,7 +65,7 @@ export default function UpdatePasswordPage() {
           </CardContent>
           <CardFooter>
             <Button type="submit" className="w-full" disabled={isPending || !!state?.success}>
-              {isPending ? 'Guardando…' : 'Actualizar contraseña'}
+              {isPending ? 'Saving…' : 'Update password'}
             </Button>
           </CardFooter>
         </form>
