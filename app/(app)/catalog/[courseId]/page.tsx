@@ -1,13 +1,16 @@
-// app/catalog/[courseId]/page.tsx
+// app/(app)/catalog/[courseId]/page.tsx
+// All data sourced from Supabase: courses, modules, lessons, cohorts,
+// user enrollments + own lesson_progress (for completion checkmarks).
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import {
-  Clock, PlayCircle, ChevronRight, Star, Users, Sparkles, Award,
-  BookOpen, Code2, Briefcase, CheckCircle2, ChevronLeft,
+  Clock, ChevronRight, Users, Sparkles,
+  BookOpen, Code2, ChevronLeft, CheckCircle2, Calendar,
 } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
 import { EnrollButton } from '@/components/EnrollButton'
+import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -54,7 +57,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const [courseResult, modulesResult, cohortsResult, enrollmentsResult] = await Promise.all([
+  const [courseResult, modulesResult, cohortsResult, enrollmentsResult, progressResult] = await Promise.all([
     supabase
       .from('courses')
       .select('id, title, slug, description, thumbnail_url')
@@ -75,6 +78,12 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .from('enrollments')
       .select('cohort_id')
       .eq('user_id', user.id),
+    // Own lesson_progress so curriculum can show real completion checkmarks
+    supabase
+      .from('lesson_progress')
+      .select('lesson_id, completed')
+      .eq('user_id', user.id)
+      .eq('completed', true),
   ])
 
   if (modulesResult.error) console.error('modules fetch error', modulesResult.error)
@@ -85,6 +94,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
   type EnrollmentCohortIdRow = { cohort_id: string }
   const enrolledCohortIds = new Set<string>(
     ((enrollmentsResult.data ?? []) as EnrollmentCohortIdRow[]).map((e) => e.cohort_id),
+  )
+  type ProgressLite = { lesson_id: string; completed: boolean }
+  const completedSet = new Set<string>(
+    ((progressResult.data ?? []) as ProgressLite[]).map((p) => p.lesson_id),
   )
 
   const rawCourse = courseResult.data
@@ -97,17 +110,38 @@ export default async function CourseDetailPage({ params }: PageProps) {
     (s, m) => s + (m.lessons ?? []).reduce((ss, l) => ss + (l.duration_seconds ?? 0), 0),
     0,
   )
-  const totalHours = Math.max(1, Math.round(totalSeconds / 3600))
+  const totalHours = totalSeconds > 0 ? Math.max(1, Math.round(totalSeconds / 3600)) : 0
   const hue = hueFor(course.id)
+  const activeCohortCount = cohorts.filter((c) => c.status === 'active').length
+  const upcomingCohortCount = cohorts.filter((c) => new Date(c.starts_at).getTime() > Date.now()).length
 
-  // What you'll learn — derived from module titles, AI-themed
+  // Curriculum data — same shape used by lesson page sidebar
+  const curriculum: CurriculumModule[] = modules.map((m) => ({
+    id: m.id,
+    title: m.title,
+    position: m.position,
+    lessons: (m.lessons ?? []).map((l) => ({
+      id: l.id,
+      title: l.title,
+      position: l.position,
+      duration_seconds: l.duration_seconds,
+      completed: completedSet.has(l.id),
+    })),
+  }))
+
+  // Enrollment status (any cohort of this course)
+  const isEnrolled = cohorts.some((c) => enrolledCohortIds.has(c.id))
+  const completedHere = curriculum.flatMap((m) => m.lessons).filter((l) => l.completed).length
+  const courseProgressPct = totalLessons > 0 ? Math.floor((completedHere / totalLessons) * 100) : 0
+
+  // What you'll learn — derived from module titles (real)
   const learningOutcomes = modules.slice(0, 6).map((m, i) => ({
     text: m.title,
-    Icon: [Sparkles, Code2, Briefcase, Award, BookOpen, Users][i % 6],
+    Icon: [Sparkles, Code2, BookOpen, CheckCircle2, Users, Calendar][i % 6],
   }))
 
   return (
-    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-8 pt-6 pb-16">
+    <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-8">
 
       {/* Back link */}
       <Link
@@ -117,12 +151,17 @@ export default async function CourseDetailPage({ params }: PageProps) {
         <ChevronLeft size={13} /> Back to catalog
       </Link>
 
-      {/* ── Hero ─────────────────────────────────────────────────── */}
+      {/* Hero */}
       <section className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_440px] lg:items-center">
         <div className="flex flex-col gap-5">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary))]" />
-            <span>Course · AI Foundations</span>
+            <span>Course</span>
+            {isEnrolled && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[10px] font-semibold normal-case text-emerald-400">
+                <CheckCircle2 size={10} /> Enrolled
+              </span>
+            )}
           </div>
 
           <h1 className="text-[44px] font-bold leading-[1.05] tracking-[-0.025em]">
@@ -138,38 +177,43 @@ export default async function CourseDetailPage({ params }: PageProps) {
           {/* Stats bar */}
           <div className="flex flex-wrap gap-x-6 gap-y-3 text-[13px]">
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <PlayCircle size={14} className="text-primary" />
-              <span className="font-medium text-foreground">{totalLessons}</span> lessons
+              <BookOpen size={14} className="text-primary" />
+              <span className="font-medium text-foreground">{totalLessons}</span> lesson{totalLessons !== 1 ? 's' : ''}
+            </span>
+            {totalHours > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                <Clock size={14} className="text-accent" />
+                <span className="font-medium text-foreground">{totalHours}h</span> total
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <BookOpen size={14} className="text-cyan-400" />
+              <span className="font-medium text-foreground">{modules.length}</span> module{modules.length !== 1 ? 's' : ''}
             </span>
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Clock size={14} className="text-accent" />
-              <span className="font-medium text-foreground">{totalHours}h</span> total
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Users size={14} className="text-cyan-400" />
+              <Users size={14} className="text-emerald-400" />
               <span className="font-medium text-foreground">{cohorts.length}</span> cohort{cohorts.length !== 1 ? 's' : ''}
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              <Star size={14} className="text-yellow-400" fill="currentColor" />
-              <span className="font-medium text-foreground">4.9</span> · 412 ratings
+              {activeCohortCount > 0 && <span className="text-emerald-400/80">· {activeCohortCount} active</span>}
             </span>
           </div>
 
-          {/* Instructor block */}
-          <div className="mt-2 flex items-center gap-3 rounded-2xl border border-border bg-card p-4">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-primary to-accent text-[14px] font-bold text-white shadow-[0_4px_16px_rgba(139,92,246,0.4)]">
-              MR
+          {/* Course progress bar (only if enrolled) */}
+          {isEnrolled && totalLessons > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="font-semibold uppercase tracking-[0.07em] text-muted-foreground">Your progress</span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {completedHere} / {totalLessons} · {courseProgressPct}%
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-all duration-700"
+                  style={{ width: `${courseProgressPct}%` }}
+                />
+              </div>
             </div>
-            <div className="flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Instructor</div>
-              <div className="text-[14px] font-semibold">Dr. Maya Reyes</div>
-              <div className="text-[11.5px] text-muted-foreground">Principal Researcher · Anthropic alum</div>
-            </div>
-            <div className="hidden text-right md:block">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Office hours</div>
-              <div className="text-[12px] font-medium">Thursdays · 6 PM EST</div>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Hero thumbnail */}
@@ -190,13 +234,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
               {hue.symbol}
             </span>
           )}
-          <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold text-white backdrop-blur-md">
-            <PlayCircle size={12} /> Preview available
-          </span>
         </div>
       </section>
 
-      {/* ── What you'll learn ────────────────────────────────────── */}
+      {/* What you'll learn */}
       {learningOutcomes.length > 0 && (
         <section className="flex flex-col gap-4">
           <h2 className="text-[20px] font-bold tracking-tight">What you&apos;ll learn</h2>
@@ -216,10 +257,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
         </section>
       )}
 
-      {/* ── Two-col: Curriculum + Cohorts ───────────────────────── */}
+      {/* Curriculum + Cohorts */}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_400px] lg:items-start">
 
-        {/* Curriculum */}
+        {/* Curriculum — uses the SAME CurriculumTree component as the lesson sidebar */}
         <section className="flex flex-col gap-5">
           <div className="flex items-baseline justify-between">
             <h2 className="text-[20px] font-bold tracking-tight">Curriculum</h2>
@@ -233,62 +274,22 @@ export default async function CourseDetailPage({ params }: PageProps) {
               No modules available yet.
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {modules.map((mod, i) => {
-                const lessons = (mod.lessons ?? []).slice().sort((a, b) => a.position - b.position)
-                const moduleSeconds = lessons.reduce((s, l) => s + (l.duration_seconds ?? 0), 0)
-                const moduleMinutes = Math.round(moduleSeconds / 60)
-
-                return (
-                  <div key={mod.id} className="overflow-hidden rounded-2xl border border-border bg-card">
-                    {/* Module header */}
-                    <div className="flex items-center gap-3 border-b border-border bg-secondary/20 px-5 py-3.5">
-                      <div className="grid h-8 w-8 place-items-center rounded-[10px] bg-gradient-to-br from-primary/20 to-accent/15 font-mono text-[12px] font-bold text-primary ring-1 ring-primary/30">
-                        {String(i + 1).padStart(2, '0')}
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Module {i + 1}</div>
-                        <div className="text-[14.5px] font-bold tracking-tight">{mod.title}</div>
-                      </div>
-                      <div className="text-right text-[11.5px] text-muted-foreground">
-                        <div>{lessons.length} lesson{lessons.length !== 1 ? 's' : ''}</div>
-                        {moduleMinutes > 0 && <div>{moduleMinutes} min</div>}
-                      </div>
-                    </div>
-
-                    {/* Lessons */}
-                    <div className="flex flex-col">
-                      {lessons.map((lesson, li) => (
-                        <Link
-                          key={lesson.id}
-                          href={`/dashboard/lesson/${lesson.id}`}
-                          className="group flex items-center gap-3 border-t border-border/40 px-5 py-2.5 first:border-t-0 transition-colors hover:bg-secondary/30"
-                        >
-                          <div className="grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-white/[0.06] font-mono text-[10px] font-medium text-muted-foreground transition-colors group-hover:bg-primary/20 group-hover:text-primary">
-                            {li + 1}
-                          </div>
-                          <PlayCircle size={13} className="flex-shrink-0 text-muted-foreground/60 transition-colors group-hover:text-primary" />
-                          <span className="flex-1 truncate text-[13px] text-muted-foreground transition-colors group-hover:text-foreground">
-                            {lesson.title}
-                          </span>
-                          {lesson.duration_seconds && (
-                            <span className="font-mono text-[11px] tabular-nums text-muted-foreground/60">
-                              {Math.round(lesson.duration_seconds / 60)} min
-                            </span>
-                          )}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <CurriculumTree
+              modules={curriculum}
+              variant="full"
+              linksToLessons={isEnrolled}
+            />
           )}
         </section>
 
         {/* Cohorts (sticky right rail) */}
         <aside className="flex flex-col gap-4 lg:sticky lg:top-6">
-          <h2 className="text-[18px] font-bold tracking-tight">Available cohorts</h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-[18px] font-bold tracking-tight">Cohorts</h2>
+            {upcomingCohortCount > 0 && (
+              <span className="text-[11px] text-emerald-400">{upcomingCohortCount} upcoming</span>
+            )}
+          </div>
 
           {cohorts.length === 0 ? (
             <div className="rounded-2xl border border-border bg-card p-6 text-center text-[13px] text-muted-foreground">
@@ -300,6 +301,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                 const enrolled = enrolledCohortIds.has(cohort.id)
                 const startsAt = new Date(cohort.starts_at)
                 const isUpcoming = startsAt.getTime() > Date.now()
+                const isActive = cohort.status === 'active'
 
                 return (
                   <div
@@ -314,7 +316,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                          {cohort.status === 'active' ? 'Active' : isUpcoming ? 'Upcoming' : 'Past'}
+                          {isActive ? 'Active' : isUpcoming ? 'Upcoming' : 'Past'}
                         </div>
                         <div className="text-[14.5px] font-bold leading-snug">{cohort.title}</div>
                       </div>
@@ -333,6 +335,15 @@ export default async function CourseDetailPage({ params }: PageProps) {
                           {startsAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                       </div>
+                      {cohort.ends_at && (
+                        <div className="flex items-center gap-1.5 text-[12px]">
+                          <Calendar size={11} className="text-muted-foreground" />
+                          <span className="text-muted-foreground">Ends</span>
+                          <span className="ml-auto font-medium tabular-nums">
+                            {new Date(cohort.ends_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                      )}
                       {cohort.max_seats > 0 && (
                         <div className="flex items-center gap-1.5 text-[12px]">
                           <Users size={11} className="text-muted-foreground" />
@@ -345,7 +356,7 @@ export default async function CourseDetailPage({ params }: PageProps) {
                     {!enrolled && <EnrollButton cohortId={cohort.id} />}
                     {enrolled && (
                       <Link
-                        href={`/dashboard`}
+                        href="/dashboard"
                         className="inline-flex items-center justify-center gap-1.5 rounded-[10px] border border-border bg-card px-4 py-2 text-[12.5px] font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground"
                       >
                         Go to dashboard <ChevronRight size={12} />
@@ -356,15 +367,6 @@ export default async function CourseDetailPage({ params }: PageProps) {
               })}
             </div>
           )}
-
-          {/* Trust strip */}
-          <div className="rounded-2xl border border-border bg-gradient-to-br from-primary/[0.06] to-accent/[0.04] p-4 text-[11.5px] leading-relaxed text-muted-foreground">
-            <div className="mb-2 flex items-center gap-2 text-foreground">
-              <Sparkles size={13} className="text-primary" />
-              <span className="font-semibold">Cohort-based · enterprise-ready</span>
-            </div>
-            Live office hours · 1:1 instructor feedback · shared Slack channel · capstone project review.
-          </div>
         </aside>
       </div>
     </main>

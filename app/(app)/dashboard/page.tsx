@@ -1,13 +1,18 @@
 // app/dashboard/page.tsx
+// All metrics derive from real Supabase rows the user can read under RLS:
+//   - lesson_progress / quiz_attempts → personal stats (via getLearnerStats)
+//   - enrollments + cohorts + courses → cohort cards (real)
+//   - cohort-mate enrollments + profiles → roster (RLS allows for shared cohorts)
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Ring } from '@/components/ui/Ring'
 import {
   Clock, Flame, Sparkles, Play, ChevronRight, Trophy,
-  Zap, Target, BookOpen, Award, Lock,
+  Zap, Target, BookOpen, Award, Lock, Users,
 } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
+import { getLearnerStats } from '@/lib/learner-stats'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,7 +40,8 @@ type LessonRowMin = Pick<
   'id' | 'module_id' | 'title'
 >
 
-type QuizAttemptRow = { score: number; max_score: number }
+type PeerEnrollmentRow = { user_id: string; enrolled_at: string; cohort_id: string }
+type PeerProfileRow = { id: string; full_name: string | null; email: string; role: string }
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,6 +61,14 @@ function hueFor(id: string) {
   return HUES[h % HUES.length]
 }
 
+// Deterministic avatar color from user id
+const PEER_COLORS = ['#7C3AED', '#22D3EE', '#F472B6', '#34D399', '#FBBF24', '#FB7185', '#60A5FA', '#FB923C']
+function colorFor(id: string) {
+  let h = 0
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
+  return PEER_COLORS[h % PEER_COLORS.length]
+}
+
 function statusBadge(pct: number): { label: string; cls: string } {
   if (pct === 0) return { label: 'Just started', cls: 'bg-blue-400/20 text-blue-300 border-blue-400/40' }
   if (pct < 80) return { label: 'On track', cls: 'bg-emerald-400/20 text-emerald-300 border-emerald-400/40' }
@@ -67,16 +81,21 @@ function daysLeft(endsAt: string | null): number | null {
   return Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 86_400_000))
 }
 
-// ---------------------------------------------------------------------------
-// Mock leaderboard peers (replace with DB view/RPC in production)
-// ---------------------------------------------------------------------------
-const MOCK_PEERS = [
-  { name: 'Devon Cole', initials: 'DC', color: '#7C3AED', pct: 82 },
-  { name: 'Riya Shah', initials: 'RS', color: '#22D3EE', pct: 64 },
-  { name: 'Marcus Lee', initials: 'ML', color: '#F472B6', pct: 51 },
-  { name: 'Aiko Nakamura', initials: 'AN', color: '#34D399', pct: 47 },
-  { name: 'Theo Bauer', initials: 'TB', color: '#FBBF24', pct: 31 },
-]
+function relativeDays(iso: string): string {
+  const d = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000))
+  if (d === 0) return 'Today'
+  if (d === 1) return 'Yesterday'
+  if (d < 7) return `${d}d ago`
+  if (d < 30) return `${Math.floor(d / 7)}w ago`
+  return `${Math.floor(d / 30)}mo ago`
+}
+
+function initialsOf(name: string | null, email: string): string {
+  const src = (name && name.trim()) || email.split('@')[0]
+  const parts = src.split(/\s+/)
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+  return src.slice(0, 2).toUpperCase()
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -87,8 +106,8 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Parallel: enrollments + completed lessons + quiz attempts
-  const [enrollmentsResult, progressResult, quizResult] = await Promise.all([
+  // Parallel: enrollments + own profile + learner stats (own only, by RLS)
+  const [enrollmentsResult, ownProfileResult, stats] = await Promise.all([
     supabase
       .from('enrollments')
       .select(`id, cohort_id, enrolled_at, status,
@@ -97,29 +116,18 @@ export default async function DashboardPage() {
       .eq('user_id', user.id)
       .eq('status', 'active'),
     supabase
-      .from('lesson_progress')
-      .select('lesson_id, completed')
-      .eq('user_id', user.id)
-      .eq('completed', true),
-    supabase
-      .from('quiz_attempts')
-      .select('score, max_score')
-      .eq('user_id', user.id),
+      .from('profiles')
+      .select('id, full_name, email, role')
+      .eq('id', user.id)
+      .maybeSingle(),
+    getLearnerStats(supabase, user.id),
   ])
 
   const enrollments: EnrollmentWithCohort[] =
     (enrollmentsResult.data as EnrollmentWithCohort[] | null) ?? []
+  const ownProfile = ownProfileResult.data as PeerProfileRow | null
 
-  type LessonProgressRow = { lesson_id: string; completed: boolean }
-  const completedLessonIds = new Set<string>(
-    ((progressResult.data ?? []) as LessonProgressRow[]).map((r) => r.lesson_id),
-  )
-
-  const perfectQuizCount = ((quizResult.data ?? []) as QuizAttemptRow[]).filter(
-    (a) => a.max_score > 0 && a.score === a.max_score,
-  ).length
-
-  // Build lessonsByCourse
+  // Build lessonsByCourse for cohort-card percentages + Resume button
   const courseIds = enrollments
     .map((e) => e.cohorts?.course_id)
     .filter((id): id is string => Boolean(id))
@@ -149,9 +157,16 @@ export default async function DashboardPage() {
     }
   }
 
-  const totalCompleted = completedLessonIds.size
-  const totalLessonsAcrossAll = [...lessonsByCourse.values()].reduce((s, ls) => s + ls.length, 0)
-  const lessonsAway = Math.max(0, totalLessonsAcrossAll - totalCompleted)
+  // Completed lesson set (from getLearnerStats already pulls progress, but we
+  // need lesson_id specifically for cohort cards + resume; pull again briefly)
+  const { data: completedRows } = await supabase
+    .from('lesson_progress')
+    .select('lesson_id')
+    .eq('user_id', user.id)
+    .eq('completed', true)
+  const completedLessonIds = new Set<string>(
+    ((completedRows ?? []) as { lesson_id: string }[]).map((r) => r.lesson_id),
+  )
 
   // First incomplete lesson → Resume button
   let resumeLesson: { href: string; title: string } | null = null
@@ -162,71 +177,71 @@ export default async function DashboardPage() {
     if (next) { resumeLesson = { href: `/dashboard/lesson/${next.id}`, title: next.title }; break }
   }
 
-  // Overall pct for leaderboard "You" entry
-  const overallPct = totalLessonsAcrossAll > 0
-    ? Math.floor((totalCompleted / totalLessonsAcrossAll) * 100)
-    : 0
+  // Cohort roster — real cohort-mates from RLS-allowed reads
+  const userCohortIds = enrollments.map((e) => e.cohort_id)
+  let cohortRoster: Array<{
+    id: string
+    name: string
+    email: string
+    role: string
+    initials: string
+    color: string
+    enrolled_at: string
+    isYou: boolean
+  }> = []
 
-  // Build leaderboard (insert real user as "You")
-  const youInitials = ((user.email ?? 'YO').split('@')[0]).slice(0, 2).toUpperCase()
-  const leaderboard = [
-    ...MOCK_PEERS,
-    { name: 'You', initials: youInitials, color: '#A78BFA', pct: overallPct, isYou: true },
-  ]
-    .sort((a, b) => b.pct - a.pct)
-    .map((e, i) => ({ ...e, rank: i + 1 }))
+  if (userCohortIds.length > 0) {
+    const { data: peerEnrollmentsData } = await supabase
+      .from('enrollments')
+      .select('user_id, enrolled_at, cohort_id')
+      .in('cohort_id', userCohortIds)
+      .order('enrolled_at', { ascending: false })
 
-  // Achievements (derived from real data)
+    const peerEnrollments = (peerEnrollmentsData ?? []) as PeerEnrollmentRow[]
+
+    // Most-recent enrollment per user
+    const earliestByUser = new Map<string, string>()
+    for (const e of peerEnrollments) {
+      const existing = earliestByUser.get(e.user_id)
+      if (!existing || e.enrolled_at > existing) earliestByUser.set(e.user_id, e.enrolled_at)
+    }
+
+    const peerUserIds = [...earliestByUser.keys()]
+    if (peerUserIds.length > 0) {
+      const { data: peerProfilesData } = await supabase
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .in('id', peerUserIds)
+
+      const peerProfiles = (peerProfilesData ?? []) as PeerProfileRow[]
+      cohortRoster = peerProfiles
+        .map((p) => ({
+          id: p.id,
+          name: p.full_name ?? p.email.split('@')[0],
+          email: p.email,
+          role: p.role,
+          initials: initialsOf(p.full_name, p.email),
+          color: colorFor(p.id),
+          enrolled_at: earliestByUser.get(p.id) ?? new Date().toISOString(),
+          isYou: p.id === user.id,
+        }))
+        .sort((a, b) => b.enrolled_at.localeCompare(a.enrolled_at))
+    }
+  }
+
+  // Achievements — all derived from real data
   const anyCourseDone = [...lessonsByCourse.entries()].some(([courseId]) => {
     const lessons = lessonsByCourse.get(courseId) ?? []
     return lessons.length > 0 && lessons.every((l) => completedLessonIds.has(l.id))
   })
 
   const achievements = [
-    {
-      id: 'streak',
-      Icon: Flame,
-      label: '7-day streak',
-      desc: 'Earned today',
-      iconBg: 'from-orange-400 to-rose-500',
-      earned: true,
-    },
-    {
-      id: 'speed',
-      Icon: Zap,
-      label: 'Speed runner',
-      desc: '5 lessons in a day',
-      iconBg: 'from-yellow-400 to-orange-400',
-      earned: totalCompleted >= 5,
-    },
-    {
-      id: 'quiz',
-      Icon: Target,
-      label: 'Quiz master',
-      desc: '10 perfect scores',
-      iconBg: 'from-blue-400 to-cyan-400',
-      earned: perfectQuizCount >= 3,
-    },
-    {
-      id: 'diver',
-      Icon: BookOpen,
-      label: 'Deep diver',
-      desc: 'Finish a course',
-      iconBg: 'from-violet-400 to-pink-400',
-      earned: anyCourseDone,
-      progress: anyCourseDone ? null : (overallPct > 0 ? Math.min(overallPct, 80) : null),
-    },
-    {
-      id: 'finetune',
-      Icon: Award,
-      label: 'First fine-tune',
-      desc: 'Complete any module',
-      iconBg: 'from-teal-400 to-emerald-400',
-      earned: false,
-      progress: Math.min(overallPct, 40) || null,
-    },
-  ] as const
-
+    { id: 'streak',  Icon: Flame,    label: '7-day streak',    desc: 'Earned today',          iconBg: 'from-orange-400 to-rose-500',   earned: stats.currentStreakDays >= 7 },
+    { id: 'speed',   Icon: Zap,      label: 'Speed runner',    desc: '5 lessons in a day',    iconBg: 'from-yellow-400 to-orange-400', earned: stats.maxLessonsInOneDay >= 5 },
+    { id: 'quiz',    Icon: Target,   label: 'Quiz master',     desc: '10 perfect scores',     iconBg: 'from-blue-400 to-cyan-400',     earned: stats.perfectQuizzes >= 10 },
+    { id: 'diver',   Icon: BookOpen, label: 'Deep diver',      desc: 'Finish a course',       iconBg: 'from-violet-400 to-pink-400',   earned: anyCourseDone },
+    { id: 'first',   Icon: Award,    label: 'First steps',     desc: 'Complete a lesson',     iconBg: 'from-teal-400 to-emerald-400',  earned: stats.totalLessonsCompleted >= 1 },
+  ]
   const earnedCount = achievements.filter((a) => a.earned).length
 
   return (
@@ -235,25 +250,38 @@ export default async function DashboardPage() {
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden rounded-[22px] border border-border bg-[radial-gradient(600px_300px_at_10%_0%,rgba(139,92,246,0.22),transparent_60%),radial-gradient(500px_280px_at_90%_100%,rgba(34,211,238,0.18),transparent_60%),linear-gradient(180deg,#14142A,#0E0E1B)] px-11 py-10">
         <div className="relative z-10 max-w-[620px]">
-          {lessonsAway > 0 ? (
+          {stats.totalLessonsCompleted === 0 ? (
             <h1 className="text-[40px] font-bold leading-[1.1] tracking-[-0.025em]">
-              You&apos;re{' '}
-              <span className="text-orange-400">{lessonsAway} lesson{lessonsAway !== 1 ? 's' : ''}</span>{' '}
-              <span className="grad-text">away from</span>
-              <br />leveling up.
+              Welcome,{' '}
+              <span className="grad-text">{(ownProfile?.full_name ?? user.email ?? 'there').split('@')[0]}</span>.
+              <br />Start your first lesson.
             </h1>
           ) : (
             <h1 className="text-[40px] font-bold leading-[1.1] tracking-[-0.025em]">
-              Welcome back,{' '}
-              <span className="grad-text">{(user.email ?? 'there').split('@')[0]}</span>.
-              <br />All caught up!
+              You&apos;re{' '}
+              <span className="text-orange-400">
+                {stats.lessonsAwayFromLevelUp} lesson{stats.lessonsAwayFromLevelUp !== 1 ? 's' : ''}
+              </span>{' '}
+              <span className="grad-text">away from</span>
+              <br />level {stats.level + 1}.
             </h1>
           )}
 
           <div className="my-5 flex flex-wrap gap-5 text-[13px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5"><Clock size={14} /> 18 min today</span>
-            <span className="inline-flex items-center gap-1.5"><Flame size={14} /> 7-day streak</span>
-            <span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> +120 XP today</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Clock size={14} />
+              {stats.todayMinutesWatched > 0 ? `${stats.todayMinutesWatched} min today` : 'No activity yet today'}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Flame size={14} />
+              {stats.currentStreakDays > 0
+                ? `${stats.currentStreakDays}-day streak`
+                : 'No streak yet'}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles size={14} />
+              {stats.todayXPEarned > 0 ? `+${stats.todayXPEarned} XP today` : `${stats.xp.toLocaleString()} XP total`}
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-2.5">
@@ -277,7 +305,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Decorative orbs */}
         <div className="pointer-events-none absolute -bottom-10 -right-10 -top-10 w-[420px]">
           <div className="absolute right-0 top-5 h-[280px] w-[280px] rounded-full bg-primary/45 blur-[40px]" />
           <div className="absolute right-[100px] top-[200px] h-[220px] w-[220px] rounded-full bg-accent/35 blur-[40px]" />
@@ -325,7 +352,6 @@ export default async function DashboardPage() {
                   key={enrollment.id}
                   className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
                 >
-                  {/* Gradient thumbnail */}
                   <div
                     className="relative grid aspect-[16/7] place-items-center overflow-hidden"
                     style={{ background: `linear-gradient(135deg, ${hue.from}, ${hue.to})` }}
@@ -339,7 +365,6 @@ export default async function DashboardPage() {
                     </span>
                   </div>
 
-                  {/* Card body */}
                   <div className="flex flex-1 flex-col gap-3 p-4">
                     <div>
                       <div className="text-[14.5px] font-bold tracking-tight leading-snug">
@@ -376,16 +401,16 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      {/* ── Bottom row: Achievements + Leaderboard ─────────────── */}
+      {/* ── Bottom row: Achievements + Cohort roster ─────────────── */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_380px]">
 
-        {/* Achievements */}
+        {/* Achievements (real-data only) */}
         <section className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-6">
           <div className="flex items-center justify-between">
             <h2 className="text-[17px] font-bold tracking-tight">Achievements</h2>
-            <span className="text-[12px] text-muted-foreground">
-              {earnedCount} of {achievements.length} earned
-            </span>
+            <Link href="/dashboard/achievements" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+              {earnedCount} of {achievements.length} earned <ChevronRight size={12} />
+            </Link>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -401,7 +426,6 @@ export default async function DashboardPage() {
                       : 'border-border bg-secondary/20',
                   ].join(' ')}
                 >
-                  {/* Earned badge */}
                   {a.earned && (
                     <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full bg-primary shadow-[0_0_10px_rgba(139,92,246,0.6)]">
                       <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -411,10 +435,7 @@ export default async function DashboardPage() {
                   )}
 
                   <div className={`grid h-10 w-10 place-items-center rounded-[10px] bg-gradient-to-br ${a.earned ? a.iconBg : 'from-secondary to-muted'}`}>
-                    <AchIcon
-                      size={18}
-                      className={a.earned ? 'text-white drop-shadow-sm' : 'text-muted-foreground'}
-                    />
+                    <AchIcon size={18} className={a.earned ? 'text-white drop-shadow-sm' : 'text-muted-foreground'} />
                   </div>
 
                   <div>
@@ -424,16 +445,7 @@ export default async function DashboardPage() {
                     <div className="mt-0.5 text-[11px] text-muted-foreground leading-tight">{a.desc}</div>
                   </div>
 
-                  {/* Progress bar for locked achievements */}
-                  {!a.earned && 'progress' in a && a.progress !== null && a.progress !== undefined && (
-                    <div className="mt-auto h-1 overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-primary to-accent"
-                        style={{ width: `${a.progress}%` }}
-                      />
-                    </div>
-                  )}
-                  {!a.earned && (!('progress' in a) || a.progress === null || a.progress === undefined) && (
+                  {!a.earned && (
                     <Lock size={11} className="mt-auto text-muted-foreground/40" />
                   )}
                 </div>
@@ -442,71 +454,64 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        {/* Cohort Leaderboard — adapted from 21st.dev compact-row pattern */}
+        {/* Cohort roster — real members only (no faked progress %) */}
         <section className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-[17px] font-bold tracking-tight">Cohort leaderboard</h2>
-            <span className="rounded-full border border-border bg-secondary/60 px-2.5 py-0.5 text-[11px] text-muted-foreground">
-              This week
-            </span>
+            <h2 className="text-[17px] font-bold tracking-tight">Cohort members</h2>
+            <Link href="/dashboard/team" className="inline-flex items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground">
+              View team <ChevronRight size={12} />
+            </Link>
           </div>
 
-          <div className="flex flex-col gap-1">
-            {leaderboard.map((entry) => {
-              const isYou = 'isYou' in entry && entry.isYou
-              return (
+          {cohortRoster.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <Users size={28} className="text-muted-foreground/40" />
+              <div className="text-[13px] text-muted-foreground">
+                Join a cohort to see your teammates here.
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {cohortRoster.slice(0, 6).map((m) => (
                 <div
-                  key={entry.name}
+                  key={m.id}
                   className={[
                     'flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all',
-                    isYou
+                    m.isYou
                       ? 'bg-primary/[0.08] ring-1 ring-primary/20'
                       : 'hover:bg-white/[0.03]',
                   ].join(' ')}
                 >
-                  {/* Rank */}
-                  <span className={`w-4 flex-shrink-0 text-center font-mono text-[12px] font-bold ${entry.rank <= 3 ? 'text-foreground' : 'text-muted-foreground/60'}`}>
-                    {entry.rank}
-                  </span>
-
-                  {/* Avatar */}
                   <div
                     className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full text-[11px] font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
-                    style={{ background: entry.color }}
+                    style={{ background: m.color }}
                   >
-                    {entry.initials}
+                    {m.initials}
                   </div>
-
-                  {/* Name */}
-                  <span className="flex-1 text-[13px] font-medium leading-none">
-                    {entry.name}
-                    {isYou && (
-                      <span className="ml-2 rounded-full bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary">
-                        YOU
-                      </span>
-                    )}
-                  </span>
-
-                  {/* Progress bar + % — 21st.dev pattern: colored bar matching avatar */}
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-[88px] overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${entry.pct}%`,
-                          background: entry.color,
-                          boxShadow: `0 0 6px ${entry.color}88`,
-                        }}
-                      />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[13px] font-medium leading-none">
+                      <span className="truncate">{m.name}</span>
+                      {m.isYou && (
+                        <span className="rounded-full bg-primary/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary">YOU</span>
+                      )}
                     </div>
-                    <span className="w-8 text-right font-mono text-[12px] tabular-nums text-muted-foreground">
-                      {entry.pct}%
-                    </span>
+                    <div className="mt-1 truncate text-[11px] capitalize text-muted-foreground">{m.role}</div>
                   </div>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground/70">
+                    {relativeDays(m.enrolled_at)}
+                  </span>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+              {cohortRoster.length > 6 && (
+                <Link
+                  href="/dashboard/team"
+                  className="mt-1 inline-flex items-center justify-center gap-1 rounded-xl border border-border bg-secondary/30 px-3 py-2 text-[12px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                >
+                  +{cohortRoster.length - 6} more cohort members <ChevronRight size={12} />
+                </Link>
+              )}
+            </div>
+          )}
         </section>
       </div>
     </main>
