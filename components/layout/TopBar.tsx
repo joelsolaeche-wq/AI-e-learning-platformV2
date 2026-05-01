@@ -41,7 +41,7 @@ export function TopBar({
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{xp.toLocaleString('en-US')} XP</span>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">{xp.toLocaleString()} XP</span>
         </div>
 
         {/* Bell */}

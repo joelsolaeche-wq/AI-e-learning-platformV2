@@ -74,12 +74,6 @@ export default function LoginPage() {
               <label htmlFor="password" className="text-[12px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
                 Password
               </label>
-              <Link
-                href="/auth/forgot-password"
-                className="text-[11.5px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-              >
-                Forgot password?
-              </Link>
             </div>
             <div className="group relative">
               <Lock
