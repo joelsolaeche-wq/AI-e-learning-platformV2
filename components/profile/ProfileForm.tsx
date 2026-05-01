@@ -55,7 +55,7 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
       )}
       {state?.success && (
         <div role="status" className="rounded-md bg-emerald-500/15 px-3 py-2 text-sm text-emerald-400">
-          Perfil actualizado correctamente.
+          Profile updated successfully.
         </div>
       )}
 
@@ -91,7 +91,7 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
             type="text"
             value={urlInput}
             onChange={(e) => handleUrlChange(e.target.value)}
-            placeholder="O pegá una URL de imagen…"
+            placeholder="Or paste an image URL…"
             className="h-8 w-full max-w-sm rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
           {urlInput && !isPreset(urlInput) && (
@@ -105,18 +105,18 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
           )}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Seleccioná un avatar predefinido o pegá una URL de imagen.
+          Pick a preset avatar or paste an image URL.
         </p>
       </div>
 
       {/* Full name — native input to avoid Base UI uncontrolled warning on re-render */}
       <div className="space-y-2">
-        <Label htmlFor="full_name">Nombre completo</Label>
+        <Label htmlFor="full_name">Full name</Label>
         <input
           id="full_name"
           name="full_name"
           type="text"
-          placeholder="Tu nombre"
+          placeholder="Your name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           maxLength={100}
@@ -125,7 +125,7 @@ export function ProfileForm({ initialFullName, initialAvatarUrl }: ProfileFormPr
       </div>
 
       <Button type="submit" disabled={isPending}>
-        {isPending ? 'Guardando…' : 'Guardar cambios'}
+        {isPending ? 'Saving…' : 'Save changes'}
       </Button>
     </form>
   )

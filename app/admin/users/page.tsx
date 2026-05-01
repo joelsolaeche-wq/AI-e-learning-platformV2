@@ -40,14 +40,14 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Usuarios</h1>
-          <p className="text-sm text-muted-foreground">{count ?? 0} usuarios en total</p>
+          <h1 className="text-2xl font-bold">Users</h1>
+          <p className="text-sm text-muted-foreground">{count ?? 0} users total</p>
         </div>
         <Link
           href="/admin/users/import"
           className="inline-flex h-8 items-center gap-2 rounded-lg border border-border px-3 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
         >
-          Importar CSV
+          Import CSV
         </Link>
       </div>
 

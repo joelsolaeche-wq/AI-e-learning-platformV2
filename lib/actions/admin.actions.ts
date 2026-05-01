@@ -33,7 +33,7 @@ export async function updateUserRoleAction(
   role: 'learner' | 'instructor' | 'admin',
 ): Promise<AdminActionResult> {
   const caller = await assertAdmin()
-  if (!caller) return { error: 'No autorizado.' }
+  if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
   const { error } = await admin
@@ -51,7 +51,7 @@ export async function toggleUserStatusAction(
   isActive: boolean,
 ): Promise<AdminActionResult> {
   const caller = await assertAdmin()
-  if (!caller) return { error: 'No autorizado.' }
+  if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
   const { error } = await admin
@@ -69,16 +69,16 @@ export async function adminUpdateUserAction(
   formData: FormData,
 ): Promise<AdminActionResult> {
   const caller = await assertAdmin()
-  if (!caller) return { error: 'No autorizado.' }
+  if (!caller) return { error: 'Unauthorized.' }
 
   const userId = formData.get('user_id') as string
   const fullName = (formData.get('full_name') as string | null)?.trim() ?? null
   const role = formData.get('role') as string
   const isActive = formData.get('is_active') === 'true'
 
-  if (!userId) return { error: 'ID de usuario requerido.' }
-  if (!['learner', 'instructor', 'admin'].includes(role)) return { error: 'Rol inválido.' }
-  if (fullName && fullName.length > 100) return { error: 'El nombre no puede superar los 100 caracteres.' }
+  if (!userId) return { error: 'User ID is required.' }
+  if (!['learner', 'instructor', 'admin'].includes(role)) return { error: 'Invalid role.' }
+  if (fullName && fullName.length > 100) return { error: 'Name cannot exceed 100 characters.' }
 
   const admin = createAdminClient()
   const { error } = await admin
@@ -103,7 +103,7 @@ export async function importUsersFromCSVAction(
 ): Promise<ImportResult> {
   const caller = await assertAdmin()
   if (!caller) {
-    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'No autorizado.' }] }
+    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'Unauthorized.' }] }
   }
 
   type RowInput = { full_name: string; email: string; role: string }
@@ -111,7 +111,7 @@ export async function importUsersFromCSVAction(
   try {
     rows = JSON.parse(formData.get('rows') as string)
   } catch {
-    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'Payload inválido.' }] }
+    return { created: 0, skipped: 0, errors: [{ row: 0, email: '', reason: 'Invalid payload.' }] }
   }
 
   const admin = createAdminClient()
@@ -128,11 +128,11 @@ export async function importUsersFromCSVAction(
     const role = String(raw.role ?? 'learner').trim().toLowerCase()
 
     if (!email || !EMAIL_RE.test(email)) {
-      errors.push({ row: i + 1, email, reason: 'Email inválido.' })
+      errors.push({ row: i + 1, email, reason: 'Invalid email.' })
       continue
     }
     if (!VALID_ROLES.includes(role)) {
-      errors.push({ row: i + 1, email, reason: `Rol inválido: "${role}". Usar learner, instructor o admin.` })
+      errors.push({ row: i + 1, email, reason: `Invalid role: "${role}". Use learner, instructor, or admin.` })
       continue
     }
 
@@ -154,7 +154,7 @@ export async function importUsersFromCSVAction(
     })
 
     if (createError || !authData.user) {
-      errors.push({ row: i + 1, email, reason: createError?.message ?? 'Error al crear usuario.' })
+      errors.push({ row: i + 1, email, reason: createError?.message ?? 'Failed to create user.' })
       continue
     }
 

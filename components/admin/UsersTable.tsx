@@ -107,7 +107,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
           type="text"
           value={searchValue}
           onChange={(e) => handleSearchInput(e.target.value)}
-          placeholder="Buscar por nombre o email…"
+          placeholder="Search by name or email…"
           className="h-8 w-60 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
         />
         <select
@@ -115,7 +115,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
           onChange={(e) => handleRoleFilter(e.target.value)}
           className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none"
         >
-          <option value="">Todos los roles</option>
+          <option value="">All roles</option>
           <option value="learner">Learner</option>
           <option value="instructor">Instructor</option>
           <option value="admin">Admin</option>
@@ -125,9 +125,9 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
           onChange={(e) => handleActiveFilter(e.target.value)}
           className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none"
         >
-          <option value="">Todos los estados</option>
-          <option value="true">Activos</option>
-          <option value="false">Inactivos</option>
+          <option value="">All statuses</option>
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
         </select>
       </div>
 
@@ -136,10 +136,10 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Usuario</TableHead>
-              <TableHead>Rol</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Registrado</TableHead>
+              <TableHead>User</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Joined</TableHead>
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -147,7 +147,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
             {users.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                  No se encontraron usuarios.
+                  No users found.
                 </TableCell>
               </TableRow>
             ) : (
@@ -184,17 +184,17 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                     </TableCell>
                     <TableCell>
                       <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', user.is_active ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' : 'bg-red-500/15 text-red-400 border-red-500/25')}>
-                        {user.is_active ? 'Activo' : 'Inactivo'}
+                        {user.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </TableCell>
                     <TableCell className="text-[12px] text-muted-foreground">
-                      {new Date(user.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {new Date(user.created_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground"
-                          aria-label="Acciones"
+                          aria-label="Actions"
                         >
                           <MoreHorizontal size={14} />
                         </DropdownMenuTrigger>
@@ -203,7 +203,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                             className="cursor-pointer text-sm"
                             onClick={() => router.push(`/admin/users/${user.id}`)}
                           >
-                            Editar usuario
+                            Edit user
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => handleRoleChange(user.id, 'learner')}>
@@ -221,7 +221,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                             variant={user.is_active ? 'destructive' : undefined}
                             onClick={() => handleToggleStatus(user.id, user.is_active)}
                           >
-                            {user.is_active ? 'Desactivar cuenta' : 'Activar cuenta'}
+                            {user.is_active ? 'Deactivate account' : 'Activate account'}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

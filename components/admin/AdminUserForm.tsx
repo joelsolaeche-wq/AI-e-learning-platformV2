@@ -38,7 +38,7 @@ export function AdminUserForm({ user }: { user: UserData }) {
       )}
       {state?.success && (
         <div role="status" className="rounded-md bg-emerald-500/15 px-3 py-2 text-sm text-emerald-400">
-          Usuario actualizado correctamente.
+          User updated successfully.
         </div>
       )}
 
@@ -54,7 +54,7 @@ export function AdminUserForm({ user }: { user: UserData }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="adm-full-name">Nombre completo</Label>
+        <Label htmlFor="adm-full-name">Full name</Label>
         <input
           id="adm-full-name"
           name="full_name"
@@ -62,7 +62,7 @@ export function AdminUserForm({ user }: { user: UserData }) {
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           maxLength={100}
-          placeholder="Nombre del usuario"
+          placeholder="User's name"
           className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
         />
       </div>
@@ -89,7 +89,7 @@ export function AdminUserForm({ user }: { user: UserData }) {
       </div>
 
       <div className="space-y-2">
-        <Label>Estado de la cuenta</Label>
+        <Label>Account status</Label>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -109,13 +109,13 @@ export function AdminUserForm({ user }: { user: UserData }) {
             />
           </button>
           <span className="text-sm text-muted-foreground">
-            {isActive ? 'Cuenta activa' : 'Cuenta desactivada'}
+            {isActive ? 'Account active' : 'Account disabled'}
           </span>
         </div>
       </div>
 
       <Button type="submit" disabled={isPending}>
-        {isPending ? 'Guardando…' : 'Guardar cambios'}
+        {isPending ? 'Saving…' : 'Save changes'}
       </Button>
     </form>
   )

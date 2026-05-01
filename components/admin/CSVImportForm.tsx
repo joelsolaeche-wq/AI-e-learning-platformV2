@@ -13,8 +13,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VALID_ROLES = ['learner', 'instructor', 'admin']
 
 function validateRow(row: ParsedRow) {
-  if (!row.email || !EMAIL_RE.test(row.email)) return 'Email inválido'
-  if (!VALID_ROLES.includes(row.role)) return `Rol "${row.role}" no válido`
+  if (!row.email || !EMAIL_RE.test(row.email)) return 'Invalid email'
+  if (!VALID_ROLES.includes(row.role)) return `Invalid role "${row.role}"`
   return null
 }
 
@@ -42,7 +42,7 @@ export function CSVImportForm() {
       transformHeader: (h) => h.trim().toLowerCase().replace(/\s+/g, '_'),
       complete: (results) => {
         if (!results.data.length) {
-          setParseError('El CSV está vacío o no tiene filas de datos.')
+          setParseError('The CSV is empty or has no data rows.')
           return
         }
         const normalized: ParsedRow[] = results.data.map((row) => ({
@@ -53,7 +53,7 @@ export function CSVImportForm() {
         setRows(normalized)
         setStep('preview')
       },
-      error: (err) => setParseError(`Error al parsear el CSV: ${err.message}`),
+      error: (err) => setParseError(`Failed to parse CSV: ${err.message}`),
     })
   }
 
@@ -103,8 +103,8 @@ export function CSVImportForm() {
             <Upload size={22} />
           </div>
           <div className="text-center">
-            <p className="text-sm font-medium">Arrastrá o hacé click para subir un CSV</p>
-            <p className="text-xs text-muted-foreground mt-1">Columnas: <code className="font-mono">full_name, email, role</code></p>
+            <p className="text-sm font-medium">Drag & drop or click to upload a CSV</p>
+            <p className="text-xs text-muted-foreground mt-1">Columns: <code className="font-mono">full_name, email, role</code></p>
           </div>
           <input
             ref={inputRef}
@@ -116,7 +116,7 @@ export function CSVImportForm() {
         </div>
 
         <div className="rounded-lg border border-border bg-card/40 p-4 space-y-1">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Ejemplo de CSV</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">CSV example</p>
           <pre className="text-xs font-mono text-muted-foreground leading-relaxed">
 {`full_name,email,role
 Jane Doe,jane@company.com,learner
@@ -144,13 +144,13 @@ Maria García,maria@company.com,admin`}
           <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-sm">
             <CheckCircle size={13} className="text-emerald-400" />
             <span className="font-medium text-emerald-400">{validCount}</span>
-            <span className="text-muted-foreground">válidos</span>
+            <span className="text-muted-foreground">valid</span>
           </div>
           {errorCount > 0 && (
             <div className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-sm">
               <AlertCircle size={13} className="text-red-400" />
               <span className="font-medium text-red-400">{errorCount}</span>
-              <span className="text-muted-foreground">con error</span>
+              <span className="text-muted-foreground">with errors</span>
             </div>
           )}
         </div>
@@ -161,9 +161,9 @@ Maria García,maria@company.com,admin`}
             <thead className="border-b border-border bg-muted/20">
               <tr>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">#</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Nombre</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Name</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Email</th>
-                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Rol</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">Role</th>
                 <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground"></th>
               </tr>
             </thead>
@@ -195,7 +195,7 @@ Maria García,maria@company.com,admin`}
           </table>
           {rows.length > 15 && (
             <div className="px-3 py-2 text-xs text-muted-foreground border-t border-border bg-muted/10">
-              Mostrando 15 de {rows.length} filas — se importarán {validCount} válidas
+              Showing 15 of {rows.length} rows — {validCount} valid will be imported
             </div>
           )}
         </div>
@@ -206,10 +206,10 @@ Maria García,maria@company.com,admin`}
             onClick={handleImport}
             disabled={isPending || validCount === 0}
           >
-            {isPending ? 'Importando…' : `Importar ${validCount} usuario${validCount !== 1 ? 's' : ''}`}
+            {isPending ? 'Importing…' : `Import ${validCount} user${validCount !== 1 ? 's' : ''}`}
           </Button>
           <Button type="button" variant="outline" onClick={reset} disabled={isPending}>
-            Cancelar
+            Cancel
           </Button>
         </div>
       </div>
@@ -224,14 +224,14 @@ Maria García,maria@company.com,admin`}
           <CheckCircle size={22} className="text-emerald-400" />
           <div>
             <div className="text-2xl font-bold text-emerald-400">{result?.created}</div>
-            <div className="text-xs text-muted-foreground">creados</div>
+            <div className="text-xs text-muted-foreground">created</div>
           </div>
         </div>
         <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-4">
           <Users size={22} className="text-muted-foreground" />
           <div>
             <div className="text-2xl font-bold">{result?.skipped}</div>
-            <div className="text-xs text-muted-foreground">ya existían</div>
+            <div className="text-xs text-muted-foreground">already existed</div>
           </div>
         </div>
         {(result?.errors.length ?? 0) > 0 && (
@@ -239,7 +239,7 @@ Maria García,maria@company.com,admin`}
             <AlertCircle size={22} className="text-red-400" />
             <div>
               <div className="text-2xl font-bold text-red-400">{result!.errors.length}</div>
-              <div className="text-xs text-muted-foreground">errores</div>
+              <div className="text-xs text-muted-foreground">errors</div>
             </div>
           </div>
         )}
@@ -247,18 +247,18 @@ Maria García,maria@company.com,admin`}
 
       {result?.created !== undefined && result.created > 0 && (
         <div className="rounded-md bg-emerald-500/10 border border-emerald-500/25 px-4 py-3 text-sm text-emerald-400">
-          Los usuarios creados pueden iniciar sesión usando <strong>Olvidé mi contraseña</strong> para establecer su contraseña.
+          Created users can sign in using <strong>Forgot password</strong> to set their password.
         </div>
       )}
 
       {(result?.errors.length ?? 0) > 0 && (
         <div className="rounded-xl border border-border overflow-hidden">
           <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b border-border bg-muted/20">
-            Filas con error
+            Rows with errors
           </div>
           {result!.errors.filter(e => e.row > 0).map((e, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-2 text-sm border-b border-border/40 last:border-0">
-              <span className="shrink-0 text-[11px] text-muted-foreground">Fila {e.row}</span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">Row {e.row}</span>
               <span className="font-mono text-xs truncate">{e.email || '—'}</span>
               <span className="ml-auto shrink-0 text-[11px] text-red-400">{e.reason}</span>
             </div>
@@ -268,10 +268,10 @@ Maria García,maria@company.com,admin`}
 
       <div className="flex gap-3">
         <Button type="button" variant="outline" onClick={reset}>
-          Importar otro CSV
+          Import another CSV
         </Button>
         <Button type="button" onClick={() => window.location.href = '/admin/users'}>
-          Ver usuarios
+          View users
         </Button>
       </div>
     </div>

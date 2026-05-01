@@ -15,13 +15,13 @@ export async function updateProfileAction(
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) return { error: 'No autenticado.' }
+  if (!user) return { error: 'Not authenticated.' }
 
   const fullName = (formData.get('full_name') as string | null)?.trim() ?? ''
   const avatarUrl = (formData.get('avatar_url') as string | null)?.trim() ?? null
 
   if (fullName.length > 100) {
-    return { error: 'El nombre no puede superar los 100 caracteres.' }
+    return { error: 'Name cannot exceed 100 characters.' }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,7 +42,7 @@ export async function requestPasswordResetAction(
 ): Promise<ProfileActionResult> {
   const email = (formData.get('email') as string | null)?.trim() ?? ''
 
-  if (!email) return { error: 'El email es requerido.' }
+  if (!email) return { error: 'Email is required.' }
 
   const supabase = await createClient()
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
@@ -63,10 +63,10 @@ export async function updatePasswordAction(
   const confirm = formData.get('confirm') as string
 
   if (!password || password.length < 8) {
-    return { error: 'La contraseña debe tener al menos 8 caracteres.' }
+    return { error: 'Password must be at least 8 characters.' }
   }
   if (password !== confirm) {
-    return { error: 'Las contraseñas no coinciden.' }
+    return { error: 'Passwords do not match.' }
   }
 
   const supabase = await createClient()

@@ -13,8 +13,8 @@ export default function ImportUsersPage() {
           <ArrowLeft size={14} />
         </Link>
         <div>
-          <h1 className="text-xl font-bold">Importar usuarios</h1>
-          <p className="text-sm text-muted-foreground">Cargá múltiples usuarios desde un archivo CSV</p>
+          <h1 className="text-xl font-bold">Import users</h1>
+          <p className="text-sm text-muted-foreground">Bulk-create users from a CSV file</p>
         </div>
       </div>
       <CSVImportForm />
