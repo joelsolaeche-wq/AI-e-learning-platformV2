@@ -15,14 +15,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, email')
+    .select('full_name, email, avatar_url')
     .eq('id', user.id)
     .maybeSingle()
 
-  const profileData = (profile as { full_name: string | null; email: string } | null)
+  const profileData = (profile as { full_name: string | null; email: string; avatar_url: string | null } | null)
   const sidebarUser = {
     email: profileData?.email ?? user.email ?? '',
     full_name: profileData?.full_name ?? null,
+    avatar_url: profileData?.avatar_url ?? null,
   }
 
   // Last-visited lesson for the Sidebar "Lesson" nav item
