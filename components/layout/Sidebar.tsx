@@ -2,11 +2,20 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   Home, BookOpen, PlayCircle, Trophy, Users, Flame, MoreHorizontal,
+  Settings, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { signOutAction } from '@/lib/actions/auth.actions'
 
 interface NavItem {
   href: string
@@ -23,6 +32,7 @@ interface SidebarProps {
 
 export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const initials = (user.full_name || user.email).slice(0, 2).toUpperCase()
 
   const NAV: NavItem[] = [
@@ -110,9 +120,32 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
             <div className="truncate text-[12.5px] font-semibold">{user.full_name || user.email.split('@')[0]}</div>
             <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
           </div>
-          <button className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground" aria-label="More">
-            <MoreHorizontal size={16} />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground"
+              aria-label="More options"
+            >
+              <MoreHorizontal size={16} />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="end" className="w-48">
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => router.push('/dashboard/settings/profile')}
+              >
+                <Settings size={14} />
+                <span>Perfil y configuración</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => signOutAction()}
+              >
+                <LogOut size={14} />
+                <span>Cerrar sesión</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </aside>
