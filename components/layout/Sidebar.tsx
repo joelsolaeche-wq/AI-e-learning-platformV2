@@ -6,16 +6,9 @@ import { usePathname } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
 import {
   Home, BookOpen, PlayCircle, Trophy, Users, Flame, MoreHorizontal,
-  LogOut, Settings, User as UserIcon,
+  LogOut, User as UserIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { signOutAction } from '@/lib/actions/auth.actions'
 
 interface NavItem {
@@ -25,16 +18,26 @@ interface NavItem {
   activePrefix?: string
 }
 
+const PRESET_AVATARS: Record<string, { bg: string; symbol: string }> = {
+  'violet-hex':   { bg: 'from-violet-500 to-purple-600', symbol: '✦' },
+  'cyan-wave':    { bg: 'from-cyan-400 to-blue-500',     symbol: '◈' },
+  'rose-spark':   { bg: 'from-rose-400 to-pink-500',     symbol: '❋' },
+  'amber-sun':    { bg: 'from-amber-400 to-orange-500',  symbol: '◉' },
+  'emerald-leaf': { bg: 'from-emerald-400 to-teal-500',  symbol: '◆' },
+  'indigo-star':  { bg: 'from-indigo-400 to-violet-500', symbol: '★' },
+}
+
 interface SidebarProps {
-  user: { email: string; full_name?: string | null }
+  user: { email: string; full_name?: string | null; avatar_url?: string | null }
   streakDays?: number
   lastLessonHref?: string
 }
 
 export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const initials = (user.full_name || user.email).slice(0, 2).toUpperCase()
+  const preset = user.avatar_url ? PRESET_AVATARS[user.avatar_url] : null
+  const isUrlAvatar = user.avatar_url && !preset
 
   // User menu (Sign out lives here — POSTs to /auth/logout, the existing route)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -146,9 +149,18 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
               menuOpen ? 'border-primary/40 ring-1 ring-primary/20' : 'border-border hover:border-white/15',
             )}
           >
-            <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
-              {initials}
-            </div>
+            {isUrlAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.avatar_url!} alt={initials} className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
+            ) : preset ? (
+              <div className={cn('grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br text-sm text-white', preset.bg)}>
+                {preset.symbol}
+              </div>
+            ) : (
+              <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-gradient-to-br from-primary to-primary/60 text-[12px] font-semibold text-primary-foreground">
+                {initials}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <div className="truncate text-[12.5px] font-semibold">{user.full_name || user.email.split('@')[0]}</div>
               <div className="truncate text-[10.5px] text-muted-foreground">{user.email}</div>
@@ -172,33 +184,24 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
               </div>
 
               <Link
-                href="/dashboard"
+                href="/dashboard/settings/profile"
                 onClick={() => setMenuOpen(false)}
                 className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 role="menuitem"
               >
-                <UserIcon size={13} /> Profile
-              </Link>
-              <Link
-                href="/dashboard"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                role="menuitem"
-              >
-                <Settings size={13} /> Settings
+                <UserIcon size={13} /> Perfil y configuración
               </Link>
 
               <div className="my-1 h-px bg-border/60" />
 
-              <form action="/auth/logout" method="POST">
-                <button
-                  type="submit"
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12.5px] text-rose-300 transition-colors hover:bg-rose-400/10"
-                  role="menuitem"
-                >
-                  <LogOut size={13} /> Sign out
-                </button>
-              </form>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); signOutAction() }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[12.5px] text-rose-300 transition-colors hover:bg-rose-400/10"
+                role="menuitem"
+              >
+                <LogOut size={13} /> Sign out
+              </button>
             </div>
           )}
         </div>
