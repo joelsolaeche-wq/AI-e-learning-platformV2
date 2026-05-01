@@ -3,8 +3,8 @@
 import { useActionState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { updatePasswordAction } from '@/lib/actions/profile.actions'
 
@@ -43,10 +43,9 @@ export default function UpdatePasswordPage() {
             )}
             <div className="space-y-2">
               <Label htmlFor="password">Nueva contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 placeholder="••••••••"
                 autoComplete="new-password"
                 minLength={8}
@@ -55,10 +54,9 @@ export default function UpdatePasswordPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirm">Confirmar contraseña</Label>
-              <Input
+              <PasswordInput
                 id="confirm"
                 name="confirm"
-                type="password"
                 placeholder="••••••••"
                 autoComplete="new-password"
                 required
