@@ -201,7 +201,7 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
               </div>
 
               <Link
-                href="/dashboard/settings/profile"
+                href="/settings/profile"
                 onClick={() => setMenuOpen(false)}
                 className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 role="menuitem"
