@@ -1,0 +1,281 @@
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { revalidatePath } from 'next/cache'
+import { randomBytes } from 'crypto'
+
+export type CohortActionResult = { error: string | null; success?: boolean; id?: string }
+
+async function assertAdminOrInstructor() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+  return ['admin', 'instructor'].includes(profile?.role) ? user : null
+}
+
+export async function createCohortAction(
+  _prevState: CohortActionResult,
+  formData: FormData,
+): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const course_id = formData.get('course_id') as string
+  const company_id = (formData.get('company_id') as string | null) || null
+  const title = (formData.get('title') as string | null)?.trim() ?? ''
+  const starts_at = formData.get('starts_at') as string
+  const ends_at = (formData.get('ends_at') as string | null) || null
+  const max_seats_raw = formData.get('max_seats') as string | null
+  const max_seats = max_seats_raw ? parseInt(max_seats_raw, 10) : 0
+  const modality = (formData.get('modality') as string) || 'virtual'
+  const notes = (formData.get('notes') as string | null)?.trim() || null
+  const status = (formData.get('status') as string) || 'draft'
+
+  if (!course_id) return { error: 'Course is required.' }
+  if (!title) return { error: 'Title is required.' }
+  if (!starts_at) return { error: 'Start date is required.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any)
+    .from('cohorts')
+    .insert({ course_id, company_id, title, starts_at, ends_at, max_seats, modality, notes, status })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/cohorts')
+  return { error: null, success: true, id: data.id }
+}
+
+export async function updateCohortAction(
+  _prevState: CohortActionResult,
+  formData: FormData,
+): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const cohortId = formData.get('cohort_id') as string
+  const title = (formData.get('title') as string | null)?.trim() ?? ''
+  const starts_at = formData.get('starts_at') as string
+  const ends_at = (formData.get('ends_at') as string | null) || null
+  const max_seats_raw = formData.get('max_seats') as string | null
+  const max_seats = max_seats_raw ? parseInt(max_seats_raw, 10) : 0
+  const modality = (formData.get('modality') as string) || 'virtual'
+  const notes = (formData.get('notes') as string | null)?.trim() || null
+  const status = (formData.get('status') as string) || 'draft'
+  const company_id = (formData.get('company_id') as string | null) || null
+
+  if (!cohortId) return { error: 'Cohort ID is required.' }
+  if (!title) return { error: 'Title is required.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any)
+    .from('cohorts')
+    .update({ title, starts_at, ends_at, max_seats, modality, notes, status, company_id })
+    .eq('id', cohortId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/cohorts')
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, success: true }
+}
+
+export async function archiveCohortAction(cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any)
+    .from('cohorts')
+    .update({ status: 'completed' })
+    .eq('id', cohortId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/cohorts')
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, success: true }
+}
+
+export async function cloneCohortAction(cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: original, error: fetchErr } = await (admin as any)
+    .from('cohorts')
+    .select('course_id, company_id, title, max_seats, modality, notes')
+    .eq('id', cohortId)
+    .single()
+
+  if (fetchErr || !original) return { error: 'Cohort not found.' }
+
+  const newStarts = new Date()
+  newStarts.setDate(newStarts.getDate() + 7)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any)
+    .from('cohorts')
+    .insert({
+      course_id: original.course_id,
+      company_id: original.company_id,
+      title: `${original.title} (Copy)`,
+      starts_at: newStarts.toISOString(),
+      max_seats: original.max_seats,
+      modality: original.modality,
+      notes: original.notes,
+      status: 'draft',
+    })
+    .select('id')
+    .single()
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/cohorts')
+  return { error: null, success: true, id: data.id }
+}
+
+export async function enrollUserAction(
+  cohortId: string,
+  userId: string,
+): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any)
+    .from('enrollments')
+    .upsert({ cohort_id: cohortId, user_id: userId, status: 'active' })
+
+  if (error) return { error: error.message }
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, success: true }
+}
+
+export async function bulkEnrollAction(
+  cohortId: string,
+  emails: string[],
+): Promise<{ enrolled: number; skipped: number; errors: string[] }> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { enrolled: 0, skipped: 0, errors: ['Unauthorized.'] }
+
+  const admin = createAdminClient()
+  let enrolled = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  for (const email of emails) {
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) continue
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (admin as any)
+      .from('profiles')
+      .select('id')
+      .eq('email', trimmed)
+      .maybeSingle()
+
+    if (!profile) {
+      errors.push(`User not found: ${trimmed}`)
+      continue
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin as any)
+      .from('enrollments')
+      .upsert({ cohort_id: cohortId, user_id: profile.id, status: 'active' })
+
+    if (error) {
+      if (error.code === '23505') { skipped++; continue }
+      errors.push(`${trimmed}: ${error.message}`)
+    } else {
+      enrolled++
+    }
+  }
+
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { enrolled, skipped, errors }
+}
+
+export async function generateInvitationCodeAction(
+  cohortId: string,
+  maxUses?: number,
+  expiresInDays?: number,
+): Promise<{ error: string | null; code?: string }> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const code = randomBytes(4).toString('hex').toUpperCase()
+  const expires_at = expiresInDays
+    ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
+    : null
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any)
+    .from('cohort_invitations')
+    .insert({
+      cohort_id: cohortId,
+      code,
+      max_uses: maxUses ?? null,
+      expires_at,
+      created_by: caller.id,
+    })
+
+  if (error) return { error: error.message }
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, code }
+}
+
+export async function joinCohortByCodeAction(code: string): Promise<CohortActionResult> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'You must be logged in.' }
+
+  const admin = createAdminClient()
+
+  // Validate invitation code
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: invitation } = await (admin as any)
+    .from('cohort_invitations')
+    .select('id, cohort_id, max_uses, uses_count, expires_at')
+    .eq('code', code.toUpperCase().trim())
+    .maybeSingle()
+
+  if (!invitation) return { error: 'Invalid invitation code.' }
+  if (invitation.expires_at && new Date(invitation.expires_at) < new Date()) {
+    return { error: 'This invitation has expired.' }
+  }
+  if (invitation.max_uses !== null && invitation.uses_count >= invitation.max_uses) {
+    return { error: 'This invitation has reached its maximum uses.' }
+  }
+
+  // Enroll user
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: enrollError } = await (admin as any)
+    .from('enrollments')
+    .upsert({ cohort_id: invitation.cohort_id, user_id: user.id, status: 'active' })
+
+  if (enrollError && enrollError.code !== '23505') return { error: enrollError.message }
+
+  // Increment uses_count
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin as any)
+    .from('cohort_invitations')
+    .update({ uses_count: invitation.uses_count + 1 })
+    .eq('id', invitation.id)
+
+  revalidatePath('/catalog')
+  revalidatePath('/dashboard')
+  return { error: null, success: true, id: invitation.cohort_id }
+}
