@@ -262,7 +262,9 @@ export type Database = {
           position: number
           title: string
           transcript: string | null
+          video_source: string
           video_url: string | null
+          youtube_id: string | null
         }
         Insert: {
           created_at?: string
@@ -273,7 +275,9 @@ export type Database = {
           position: number
           title: string
           transcript?: string | null
+          video_source?: string
           video_url?: string | null
+          youtube_id?: string | null
         }
         Update: {
           created_at?: string
@@ -284,7 +288,9 @@ export type Database = {
           position?: number
           title?: string
           transcript?: string | null
+          video_source?: string
           video_url?: string | null
+          youtube_id?: string | null
         }
         Relationships: [
           {

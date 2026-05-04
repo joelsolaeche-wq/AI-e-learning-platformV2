@@ -4,15 +4,26 @@ import { useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import MuxPlayer from '@mux/mux-player-react'
 
+export type VideoSource = 'mux' | 'youtube'
+
 interface VideoPlayerProps {
-  playbackId: string
   lessonId: string
   resumePosition: number
   /** Lesson duration from DB (may be 0/null for un-encoded lessons). */
   duration: number
+  videoSource: VideoSource
+  playbackId?: string | null
+  youtubeId?: string | null
 }
 
-export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: VideoPlayerProps) {
+export function VideoPlayer({
+  lessonId,
+  resumePosition,
+  duration,
+  videoSource,
+  playbackId,
+  youtubeId,
+}: VideoPlayerProps) {
   // Read currentTime/duration from the player itself, not from event.target — the
   // Mux Player's onTimeUpdate callback shape is unreliable and the cast hack
   // (`as unknown as () => void`) was masking it.
@@ -74,6 +85,38 @@ export function VideoPlayer({ playbackId, lessonId, resumePosition, duration }: 
       if (ok) router.refresh()
     })
   }, [duration, saveProgress, router])
+
+  if (videoSource === 'youtube') {
+    if (!youtubeId) {
+      return (
+        <div className="aspect-video flex items-center justify-center rounded-2xl bg-muted">
+          <p className="text-sm text-muted-foreground">YouTube video id missing</p>
+        </div>
+      )
+    }
+    // YouTube progress isn't auto-tracked here. The "Mark video complete"
+    // button in LessonExperience covers manual completion. We use
+    // youtube-nocookie.com to avoid third-party cookies in the embed.
+    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?rel=0&modestbranding=1`
+    return (
+      <iframe
+        src={src}
+        title="Lesson video"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        style={{ width: '100%', aspectRatio: '16/9', border: 0 }}
+      />
+    )
+  }
+
+  if (!playbackId) {
+    return (
+      <div className="aspect-video flex items-center justify-center rounded-2xl bg-muted">
+        <p className="text-sm text-muted-foreground">Mux playback id missing</p>
+      </div>
+    )
+  }
 
   return (
     <MuxPlayer

@@ -13,7 +13,14 @@ import type { CurriculumModule } from '@/components/CurriculumTree'
 
 type LessonRow = Pick<
   Database['public']['Tables']['lessons']['Row'],
-  'id' | 'title' | 'module_id' | 'mux_playback_id' | 'duration_seconds' | 'transcript'
+  | 'id'
+  | 'title'
+  | 'module_id'
+  | 'mux_playback_id'
+  | 'duration_seconds'
+  | 'transcript'
+  | 'video_source'
+  | 'youtube_id'
 >
 
 type ProgressRow = Pick<
@@ -81,7 +88,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     supabase
       .from('lessons')
       .select(
-        'id, title, module_id, mux_playback_id, duration_seconds, transcript, modules(id, title, course_id, courses(id, title))',
+        'id, title, module_id, mux_playback_id, duration_seconds, transcript, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
       )
       .eq('id', lessonId)
       .single(),
