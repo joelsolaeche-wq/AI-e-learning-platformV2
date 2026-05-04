@@ -79,7 +79,7 @@ export async function updateCompanyAction(
   return { error: null, success: true }
 }
 
-export async function deleteCompanyAction(companyId: string): Promise<CompanyActionResult> {
+export async function archiveCompanyAction(companyId: string): Promise<CompanyActionResult> {
   const caller = await assertAdmin()
   if (!caller) return { error: 'Unauthorized.' }
 
@@ -87,11 +87,29 @@ export async function deleteCompanyAction(companyId: string): Promise<CompanyAct
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('organizations')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', companyId)
 
   if (error) return { error: error.message }
   revalidatePath('/admin/companies')
+  revalidatePath(`/admin/companies/${companyId}`)
+  return { error: null, success: true }
+}
+
+export async function restoreCompanyAction(companyId: string): Promise<CompanyActionResult> {
+  const caller = await assertAdmin()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any)
+    .from('organizations')
+    .update({ deleted_at: null })
+    .eq('id', companyId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/admin/companies')
+  revalidatePath(`/admin/companies/${companyId}`)
   return { error: null, success: true }
 }
 

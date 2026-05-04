@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react'
 import { CompanyForm } from '@/components/admin/CompanyForm'
 import { CompanyCourseAssignment } from '@/components/admin/CompanyCourseAssignment'
 import { CompanyUsersPanel } from '@/components/admin/CompanyUsersPanel'
+import { CompanyArchiveButton } from '@/components/admin/CompanyArchiveButton'
 
 export default async function EditCompanyPage({ params }: { params: Promise<{ companyId: string }> }) {
   const { companyId } = await params
@@ -14,7 +15,7 @@ export default async function EditCompanyPage({ params }: { params: Promise<{ co
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('organizations').select('*').eq('id', companyId).single(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title, slug').eq('is_published', true).order('title'),
+    (admin as any).from('courses').select('id, title, slug').order('title'),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('course_companies').select('course_id').eq('company_id', companyId),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,17 +29,28 @@ export default async function EditCompanyPage({ params }: { params: Promise<{ co
   if (!companyRes.data) notFound()
 
   const assignedCourseIds: string[] = (assignedRes.data ?? []).map((r: { course_id: string }) => r.course_id)
+  const isArchived = !!companyRes.data.deleted_at
 
   return (
     <div className="max-w-2xl space-y-8">
-      <div>
-        <Link
-          href="/admin/companies"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronLeft size={14} /> Companies
-        </Link>
-        <h1 className="mt-3 text-2xl font-bold">{companyRes.data.name}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href="/admin/companies"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft size={14} /> Companies
+          </Link>
+          <div className="mt-3 flex items-center gap-3">
+            <h1 className="text-2xl font-bold">{companyRes.data.name}</h1>
+            {isArchived && (
+              <span className="rounded-full border border-slate-500/30 bg-slate-500/10 px-2 py-0.5 text-xs text-slate-400">
+                Archived
+              </span>
+            )}
+          </div>
+        </div>
+        <CompanyArchiveButton companyId={companyId} isArchived={isArchived} />
       </div>
 
       <section className="space-y-3">

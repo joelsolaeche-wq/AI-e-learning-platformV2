@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, PlayCircle, ChevronRight, Star } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
+import { JoinByCodeForm } from '@/components/JoinByCodeForm'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -89,11 +90,12 @@ export default async function CatalogPage() {
             Cohort-based courses taught by engineers shipping AI in production.
           </p>
         </div>
-        <div className="flex gap-8">
-          <div>
+        <div className="flex flex-col items-end gap-3">
+          <div className="text-right">
             <div className="text-[28px] font-bold tracking-[-0.02em]">{courses.length}</div>
             <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Courses</div>
           </div>
+          <JoinByCodeForm />
         </div>
       </header>
 

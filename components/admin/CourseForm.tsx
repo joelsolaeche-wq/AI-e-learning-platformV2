@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createCourseAction, updateCourseAction, type CourseActionResult } from '@/lib/actions/courses.actions'
 
 type Course = {
@@ -21,10 +21,17 @@ const STATUS_OPTIONS = [
   { value: 'archived', label: 'Archived', desc: 'Hidden, read-only' },
 ]
 
+const STATUS_ACTIVE: Record<string, string> = {
+  draft: 'border-amber-500/60 bg-amber-500/10 text-amber-300',
+  published: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300',
+  archived: 'border-slate-500/60 bg-slate-500/10 text-slate-300',
+}
+
 export function CourseForm({ course }: { course?: Course }) {
   const isEdit = !!course
   const action = isEdit ? updateCourseAction : createCourseAction
   const [state, formAction, isPending] = useActionState(action, initialState)
+  const [selectedStatus, setSelectedStatus] = useState(course?.status ?? 'draft')
   const router = useRouter()
 
   useEffect(() => {
@@ -76,21 +83,29 @@ export function CourseForm({ course }: { course?: Course }) {
       <div className="space-y-1.5">
         <label className="text-[13px] font-medium">Status</label>
         <div className="flex gap-2">
-          {STATUS_OPTIONS.map((opt) => (
-            <label key={opt.value} className="flex-1 cursor-pointer">
-              <input
-                type="radio"
-                name="status"
-                value={opt.value}
-                defaultChecked={(course?.status ?? 'draft') === opt.value}
-                className="sr-only"
-              />
-              <div className="rounded-xl border border-border bg-card px-3 py-2.5 text-center transition-all has-[:checked]:border-primary/50 has-[:checked]:bg-primary/10">
-                <div className="text-[13px] font-medium">{opt.label}</div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">{opt.desc}</div>
-              </div>
-            </label>
-          ))}
+          {STATUS_OPTIONS.map((opt) => {
+            const isSelected = selectedStatus === opt.value
+            return (
+              <label key={opt.value} className="flex-1 cursor-pointer">
+                <input
+                  type="radio"
+                  name="status"
+                  value={opt.value}
+                  checked={isSelected}
+                  onChange={() => setSelectedStatus(opt.value)}
+                  className="sr-only"
+                />
+                <div className={`rounded-xl border px-3 py-2.5 text-center transition-all ${
+                  isSelected
+                    ? STATUS_ACTIVE[opt.value]
+                    : 'border-border bg-card text-muted-foreground hover:border-border/80 hover:bg-white/[0.03]'
+                }`}>
+                  <div className="text-[13px] font-medium">{opt.label}</div>
+                  <div className="mt-0.5 text-[11px] opacity-70">{opt.desc}</div>
+                </div>
+              </label>
+            )
+          })}
         </div>
       </div>
 

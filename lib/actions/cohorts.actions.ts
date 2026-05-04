@@ -215,26 +215,34 @@ export async function generateInvitationCodeAction(
   const caller = await assertAdminOrInstructor()
   if (!caller) return { error: 'Unauthorized.' }
 
-  const code = randomBytes(4).toString('hex').toUpperCase()
   const expires_at = expiresInDays
     ? new Date(Date.now() + expiresInDays * 86400000).toISOString()
     : null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
-    .from('cohort_invitations')
-    .insert({
-      cohort_id: cohortId,
-      code,
-      max_uses: maxUses ?? null,
-      expires_at,
-      created_by: caller.id,
-    })
 
-  if (error) return { error: error.message }
-  revalidatePath(`/admin/cohorts/${cohortId}`)
-  return { error: null, code }
+  // Retry up to 5 times on unique code collision
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomBytes(4).toString('hex').toUpperCase()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin as any)
+      .from('cohort_invitations')
+      .insert({
+        cohort_id: cohortId,
+        code,
+        max_uses: maxUses ?? null,
+        expires_at,
+        created_by: caller.id,
+      })
+
+    if (!error) {
+      revalidatePath(`/admin/cohorts/${cohortId}`)
+      return { error: null, code }
+    }
+    if (error.code !== '23505') return { error: error.message }
+    // 23505 = unique violation → retry with a different code
+  }
+  return { error: 'Could not generate a unique code. Try again.' }
 }
 
 export async function joinCohortByCodeAction(code: string): Promise<CohortActionResult> {
@@ -278,4 +286,14 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
   revalidatePath('/catalog')
   revalidatePath('/dashboard')
   return { error: null, success: true, id: invitation.cohort_id }
+}
+
+// Form-compatible version for useActionState (used by JoinByCodeForm)
+export async function joinByCodeFormAction(
+  _prevState: { error: string | null; success?: boolean },
+  formData: FormData,
+): Promise<{ error: string | null; success?: boolean }> {
+  const code = (formData.get('code') as string | null)?.trim() ?? ''
+  if (!code) return { error: 'Code is required.' }
+  return joinCohortByCodeAction(code)
 }

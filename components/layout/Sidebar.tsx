@@ -62,7 +62,7 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
   }, [menuOpen])
 
   const NAV: NavItem[] = [
-    { href: '/dashboard', label: 'Home', icon: Home },
+    { href: '/dashboard', label: 'My Dashboard', icon: Home },
     { href: '/catalog', label: 'Catalog', icon: BookOpen },
     {
       href: lastLessonHref ?? '/catalog',

@@ -268,6 +268,10 @@ export async function updateLessonAction(
   const duration_seconds_raw = formData.get('duration_seconds') as string | null
   const duration_seconds = duration_seconds_raw ? parseInt(duration_seconds_raw, 10) : null
   const transcript = (formData.get('transcript') as string | null)?.trim() || null
+  const content_type = (formData.get('content_type') as string | null) || 'video'
+  const document_url = (formData.get('document_url') as string | null)?.trim() || null
+  const slides_url = (formData.get('slides_url') as string | null)?.trim() || null
+  const notebook_url = (formData.get('notebook_url') as string | null)?.trim() || null
 
   if (!lessonId) return { error: 'Lesson ID is required.' }
   if (!title) return { error: 'Title is required.' }
@@ -276,7 +280,7 @@ export async function updateLessonAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('lessons')
-    .update({ title, mux_playback_id, duration_seconds, transcript })
+    .update({ title, mux_playback_id, duration_seconds, transcript, content_type, document_url, slides_url, notebook_url })
     .eq('id', lessonId)
 
   if (error) return { error: error.message }

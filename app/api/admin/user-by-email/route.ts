@@ -22,13 +22,14 @@ export async function GET(req: NextRequest) {
   if (!email) return NextResponse.json({ error: 'email param required' }, { status: 400 })
 
   const admin = createAdminClient()
+  // Search by partial email or full_name match (up to 10 results)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (admin as any)
     .from('profiles')
-    .select('id')
-    .eq('email', email.toLowerCase().trim())
-    .maybeSingle()
+    .select('id, email, full_name')
+    .or(`email.ilike.%${email.toLowerCase().trim()}%,full_name.ilike.%${email.trim()}%`)
+    .limit(10)
 
-  if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json({ id: data.id })
+  if (!data || data.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json({ results: data })
 }

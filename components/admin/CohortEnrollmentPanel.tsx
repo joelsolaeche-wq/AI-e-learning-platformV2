@@ -23,23 +23,28 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
   const [showManual, setShowManual] = useState(false)
   const [showBulk, setShowBulk] = useState(false)
   const [manualEmail, setManualEmail] = useState('')
+  const [userResults, setUserResults] = useState<{ id: string; email: string; full_name: string | null }[]>([])
   const [bulkEmails, setBulkEmails] = useState('')
   const [manualError, setManualError] = useState<string | null>(null)
   const [bulkResult, setBulkResult] = useState<{ enrolled: number; skipped: number; errors: string[] } | null>(null)
   const router = useRouter()
 
-  async function handleManualEnroll() {
-    if (!manualEmail.trim()) return
+  async function searchUsers(query: string) {
+    if (query.length < 2) { setUserResults([]); return }
+    const res = await fetch(`/api/admin/user-by-email?email=${encodeURIComponent(query)}`)
+    const json = await res.json()
+    if (json.results) setUserResults(json.results)
+    else if (json.id) setUserResults([{ id: json.id, email: manualEmail, full_name: null }])
+    else setUserResults([])
+  }
+
+  async function handleManualEnroll(userId: string) {
     setManualError(null)
     startTransition(async () => {
-      // Need to find user by email first — we do that in the action
-      // For manual enroll we need the userId; fetch it client-side via a dedicated path
-      const res = await fetch(`/api/admin/user-by-email?email=${encodeURIComponent(manualEmail.trim())}`)
-      const json = await res.json()
-      if (!json.id) { setManualError('User not found.'); return }
-      const result = await enrollUserAction(cohortId, json.id)
+      const result = await enrollUserAction(cohortId, userId)
       if (result.error) { setManualError(result.error); return }
       setManualEmail('')
+      setUserResults([])
       setShowManual(false)
       router.refresh()
     })
@@ -77,22 +82,39 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
           <div className="flex items-center gap-2">
             <input
               value={manualEmail}
-              onChange={e => setManualEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleManualEnroll()}
-              placeholder="user@company.com"
+              onChange={e => { setManualEmail(e.target.value); searchUsers(e.target.value) }}
+              placeholder="Search by name or email…"
               className="flex-1 rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 transition-all"
+              autoFocus
             />
-            <button
-              onClick={handleManualEnroll}
-              disabled={isPending || !manualEmail.trim()}
-              className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              Enroll
-            </button>
-            <button onClick={() => setShowManual(false)} className="text-muted-foreground hover:text-foreground">
+            <button onClick={() => { setShowManual(false); setManualEmail(''); setUserResults([]) }} className="text-muted-foreground hover:text-foreground">
               <X size={14} />
             </button>
           </div>
+          {userResults.length > 0 && (
+            <div className="rounded-lg border border-border bg-secondary overflow-hidden">
+              {userResults.map(u => (
+                <button
+                  key={u.id}
+                  onClick={() => handleManualEnroll(u.id)}
+                  disabled={isPending}
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm hover:bg-white/[0.05] disabled:opacity-50 transition-colors border-b border-border last:border-0"
+                >
+                  <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                    {(u.full_name || u.email)[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-medium">{u.full_name ?? '—'}</div>
+                    <div className="text-xs text-muted-foreground">{u.email}</div>
+                  </div>
+                  <span className="ml-auto text-xs text-primary">+ Enroll</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {manualEmail.length >= 2 && userResults.length === 0 && (
+            <p className="text-xs text-muted-foreground px-1">No users found for "{manualEmail}"</p>
+          )}
           {manualError && <p className="text-sm text-destructive">{manualError}</p>}
         </div>
       )}

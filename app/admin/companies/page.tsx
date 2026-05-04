@@ -7,17 +7,19 @@ export default async function AdminCompaniesPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: companies } = await (admin as any)
     .from('organizations')
-    .select('id, name, slug, description, logo_url, website')
+    .select('id, name, slug, description, logo_url, website, deleted_at')
     .order('name', { ascending: true })
 
-  const rows = companies ?? []
+  const allRows = companies ?? []
+  const rows = allRows.filter((c: { deleted_at: string | null }) => !c.deleted_at)
+  const archivedRows = allRows.filter((c: { deleted_at: string | null }) => c.deleted_at)
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Companies</h1>
-          <p className="text-sm text-muted-foreground">{rows.length} companies total</p>
+          <p className="text-sm text-muted-foreground">{rows.length} active{archivedRows.length > 0 ? `, ${archivedRows.length} archived` : ''}</p>
         </div>
         <Link
           href="/admin/companies/new"
