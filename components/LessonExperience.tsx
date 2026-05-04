@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, ChevronRight, PlayCircle, Lock, Sparkles, Check } from 'lucide-react'
+import { Clock, ChevronRight, PlayCircle, Lock, Sparkles, Check, FlaskConical } from 'lucide-react'
 import Link from 'next/link'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { QuizSection } from '@/components/QuizSection'
+import { LabPanel } from '@/components/LabPanel'
 import { Ring } from '@/components/ui/Ring'
 import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,38 @@ type ClientQuestion = {
   id: string
   question: string
   options: string[]
+}
+
+type LabCriterion = {
+  id: string
+  name: string
+  description: string | null
+  weight: number
+  position: number
+}
+
+type LabEvaluation = {
+  criteria_id: string
+  score: number
+  feedback: string
+  suggestion: string | null
+}
+
+type LabSubmission = {
+  id: string
+  status: 'pending' | 'evaluating' | 'evaluated'
+  submission_text: string | null
+  submission_url: string | null
+  submitted_at: string
+  lab_evaluations: LabEvaluation[]
+}
+
+type LabData = {
+  id: string
+  title: string
+  description: string | null
+  passing_score: number
+  lab_criteria: LabCriterion[]
 }
 
 interface LessonExperienceProps {
@@ -32,11 +65,14 @@ interface LessonExperienceProps {
   isLessonComplete: boolean
   clientQuestions: ClientQuestion[]
   curriculum: CurriculumModule[]
-  labSection?: React.ReactNode
+  lab?: LabData | null
+  latestSubmission?: LabSubmission | null
+  cohortId?: string | null
 }
 
-const TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
-type Tab = (typeof TABS)[number]
+const BASE_TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
+const ALL_TABS = [...BASE_TABS, 'Lab'] as const
+type Tab = (typeof ALL_TABS)[number]
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return ''
@@ -53,8 +89,11 @@ export function LessonExperience({
   isLessonComplete,
   clientQuestions,
   curriculum,
-  labSection,
+  lab = null,
+  latestSubmission = null,
+  cohortId = null,
 }: LessonExperienceProps) {
+  const TABS = lab ? ALL_TABS : BASE_TABS
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
   const [marking, setMarking] = useState(false)
   const router = useRouter()
@@ -151,7 +190,7 @@ export function LessonExperience({
             {TABS.map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab(tab as Tab)}
                 className={cn(
                   'relative px-4 py-1.5 text-[13px] font-medium rounded-lg transition-all duration-200',
                   activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
@@ -160,7 +199,13 @@ export function LessonExperience({
                 {activeTab === tab && (
                   <span className="absolute inset-0 rounded-lg bg-gradient-to-b from-primary/20 to-primary/[0.08] ring-1 ring-primary/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]" />
                 )}
-                <span className="relative">{tab}</span>
+                {tab === 'Lab' ? (
+                  <span className="relative flex items-center gap-1.5">
+                    <FlaskConical size={12} /> Lab
+                  </span>
+                ) : (
+                  <span className="relative">{tab}</span>
+                )}
               </button>
             ))}
           </div>
@@ -193,6 +238,9 @@ export function LessonExperience({
               <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">
                 Personal notes coming soon.
               </div>
+            )}
+            {activeTab === 'Lab' && lab && (
+              <LabPanel lab={lab} latestSubmission={latestSubmission} cohortId={cohortId} />
             )}
           </div>
         </div>
@@ -259,8 +307,6 @@ export function LessonExperience({
             />
           )}
         </section>
-
-        {labSection}
       </div>
 
       {/* Right: course curriculum sidebar */}
