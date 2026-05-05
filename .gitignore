@@ -14,6 +14,13 @@ node_modules/
 # Supabase
 supabase/.temp/
 
+# Local-only Claude Code / MCP config (per-developer)
+.claude/settings.local.json
+.mcp.json
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db

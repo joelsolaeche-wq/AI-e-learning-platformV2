@@ -64,7 +64,7 @@ on conflict (id) do nothing;
 -- ============================================================
 -- Lessons (3 — one per module)
 -- ============================================================
-insert into public.lessons (id, module_id, title, position, video_url, mux_playback_id, transcript, duration_seconds)
+insert into public.lessons (id, module_id, title, position, video_url, mux_playback_id, transcript, duration_seconds, video_source, youtube_id)
 values
   (
     '00000000-0000-0000-0000-000000000030',
@@ -74,7 +74,21 @@ values
     'https://stream.mux.com/PLACEHOLDER_PLAYBACK_ID_1.m3u8',
     'PLACEHOLDER_PLAYBACK_ID_1',
     'In this lesson, we explore what generative AI is, how it differs from traditional machine learning, and why it matters for enterprise teams. We cover the fundamentals of large language models, their training process, and the key concepts of tokens, context windows, and inference.',
-    600
+    600,
+    'mux',
+    null
+  ),
+  (
+    '00000000-0000-0000-0000-000000000033',
+    '00000000-0000-0000-0000-000000000020',
+    'Intro to Large Language Models (Karpathy)',
+    2,
+    null,
+    null,
+    null,
+    3600,
+    'youtube',
+    'zjkBMFhNj_g'
   ),
   (
     '00000000-0000-0000-0000-000000000031',
@@ -84,7 +98,9 @@ values
     'https://stream.mux.com/PLACEHOLDER_PLAYBACK_ID_2.m3u8',
     'PLACEHOLDER_PLAYBACK_ID_2',
     'This lesson covers prompt engineering fundamentals: zero-shot vs few-shot prompting, chain-of-thought reasoning, role prompting, and structured output techniques. We walk through real examples of prompts that get reliable results from Claude and GPT-4.',
-    720
+    720,
+    'mux',
+    null
   ),
   (
     '00000000-0000-0000-0000-000000000032',
@@ -94,7 +110,9 @@ values
     'https://stream.mux.com/PLACEHOLDER_PLAYBACK_ID_3.m3u8',
     'PLACEHOLDER_PLAYBACK_ID_3',
     'We build a simple AI-powered feature end to end: calling the Anthropic API, handling streaming responses, managing context windows, and avoiding common pitfalls like prompt injection. By the end you will have a working AI integration pattern you can apply to your own projects.',
-    840
+    840,
+    'mux',
+    null
   )
 on conflict (id) do nothing;
 

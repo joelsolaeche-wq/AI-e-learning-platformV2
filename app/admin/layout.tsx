@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Users, LayoutDashboard } from 'lucide-react'
+import { Users, LayoutDashboard, Beaker } from 'lucide-react'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -32,6 +32,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             <Users size={15} strokeWidth={1.6} />
             Users
+          </Link>
+          <Link
+            href="/admin/labs"
+            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+          >
+            <Beaker size={15} strokeWidth={1.6} />
+            Labs
           </Link>
         </nav>
         <div className="mt-auto">

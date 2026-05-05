@@ -23,6 +23,8 @@ interface LessonExperienceProps {
     mux_playback_id: string | null
     duration_seconds: number | null
     transcript: string | null
+    video_source: string
+    youtube_id: string | null
   }
   moduleTitle: string
   courseTitle: string | null
@@ -30,6 +32,7 @@ interface LessonExperienceProps {
   isLessonComplete: boolean
   clientQuestions: ClientQuestion[]
   curriculum: CurriculumModule[]
+  labSection?: React.ReactNode
 }
 
 const TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
@@ -50,6 +53,7 @@ export function LessonExperience({
   isLessonComplete,
   clientQuestions,
   curriculum,
+  labSection,
 }: LessonExperienceProps) {
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
   const [marking, setMarking] = useState(false)
@@ -102,12 +106,14 @@ export function LessonExperience({
       <div className="min-w-0 flex-1 flex flex-col gap-6 pb-20">
         {/* Video */}
         <div className="relative rounded-2xl overflow-hidden glow-soft">
-          {lesson.mux_playback_id ? (
+          {(lesson.video_source === 'youtube' ? lesson.youtube_id : lesson.mux_playback_id) ? (
             <VideoPlayer
-              playbackId={lesson.mux_playback_id}
               lessonId={lesson.id}
               resumePosition={resumePosition}
               duration={lesson.duration_seconds ?? 0}
+              videoSource={lesson.video_source === 'youtube' ? 'youtube' : 'mux'}
+              playbackId={lesson.mux_playback_id}
+              youtubeId={lesson.youtube_id}
             />
           ) : (
             <div className="aspect-video flex items-center justify-center rounded-2xl bg-muted">
@@ -253,6 +259,8 @@ export function LessonExperience({
             />
           )}
         </section>
+
+        {labSection}
       </div>
 
       {/* Right: course curriculum sidebar */}

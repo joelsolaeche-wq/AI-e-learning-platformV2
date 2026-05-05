@@ -1,11 +1,12 @@
 // app/(app)/layout.tsx
-// Shared chrome (Sidebar + TopBar + TutorPanel) for both /dashboard/* and /catalog/*.
+// Shared chrome (Sidebar + TopBar) for both /dashboard/* and /catalog/*.
 // (app) is a Next.js route group — directory name in parens does NOT appear in URLs.
+// Note: TutorPanel is rendered per-lesson in app/(app)/dashboard/lesson/[lessonId]/page.tsx,
+// not globally — it's transcript-grounded and requires a lessonId.
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
-import { TutorPanel } from '@/components/TutorPanel'
 import { getLearnerStats } from '@/lib/learner-stats'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -58,8 +59,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
         <div className="px-10 pb-20 pt-6">{children}</div>
       </div>
-      {/* Floating AI tutor — global to all dashboard routes */}
-      <TutorPanel />
     </div>
   )
 }

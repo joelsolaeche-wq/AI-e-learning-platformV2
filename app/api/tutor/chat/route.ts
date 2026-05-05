@@ -98,32 +98,61 @@ export async function POST(request: Request) {
   }
 
   // Find-or-create ai_chat_sessions row for (user_id, lesson_id).
-  // Upsert leverages the UNIQUE (user_id, lesson_id) constraint added in
-  // migration 20260429000001 to eliminate the SELECT-then-INSERT race condition.
+  // We avoid Supabase .upsert() here because PostgREST emits ON CONFLICT DO
+  // UPDATE under the hood, which needs an UPDATE RLS policy — we only have
+  // SELECT + INSERT. The UNIQUE (user_id, lesson_id) constraint from
+  // migration 20260429000001 lets us race-safely fall back to SELECT if a
+  // concurrent INSERT wins.
   type SessionRow = { id: string }
 
-  const { data: sessionData, error: sessionUpsertError } = await supabase
-    .from('ai_chat_sessions')
-    .upsert(
-      { user_id: user.id, lesson_id: lessonId } as never,
-      { onConflict: 'user_id,lesson_id', ignoreDuplicates: false }
-    )
-    .select('id')
-    .single()
+  let sessionId: string
 
-  if (sessionUpsertError || !sessionData) {
-    console.error('[tutor chat] session upsert error', sessionUpsertError)
+  const { data: existingSession, error: existingSessionError } = await supabase
+    .from('ai_chat_sessions')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('lesson_id', lessonId)
+    .maybeSingle()
+
+  if (existingSessionError) {
+    console.error('[tutor chat] session select error', existingSessionError)
     return NextResponse.json({ error: 'Internal error' }, { status: 500 })
   }
 
-  const session = sessionData as unknown as SessionRow
+  if (existingSession) {
+    sessionId = (existingSession as unknown as SessionRow).id
+  } else {
+    const { data: created, error: createError } = await supabase
+      .from('ai_chat_sessions')
+      .insert({ user_id: user.id, lesson_id: lessonId } as never)
+      .select('id')
+      .maybeSingle()
+
+    if (created) {
+      sessionId = (created as unknown as SessionRow).id
+    } else {
+      // INSERT failed — most commonly a unique-constraint race with a
+      // concurrent request. Recover by re-selecting.
+      const { data: raced } = await supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('lesson_id', lessonId)
+        .maybeSingle()
+      if (!raced) {
+        console.error('[tutor chat] session create + race-recover failed', createError)
+        return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+      }
+      sessionId = (raced as unknown as SessionRow).id
+    }
+  }
 
   // Load last 20 messages for this session to provide conversation history.
   type MessageRow = { role: string; content: string }
   const { data: rawHistory, error: historyError } = await supabase
     .from('ai_chat_messages')
     .select('role, content')
-    .eq('session_id', session.id)
+    .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
     .limit(20)
 
@@ -139,7 +168,7 @@ export async function POST(request: Request) {
   const { error: userMsgError } = await supabase
     .from('ai_chat_messages')
     .insert({
-      session_id: session.id,
+      session_id: sessionId,
       role: 'user',
       content: message.trim(),
     } as never)
@@ -195,26 +224,29 @@ ${transcriptSection}`
       ...priorMessages,
       { role: 'user', content: message.trim() },
     ],
+    onError: ({ error }) => {
+      // Provider/network errors are silently swallowed by streamText otherwise,
+      // producing an empty response. Surface them in server logs so we can
+      // diagnose 4xx/5xx from Anthropic, model-name typos, token-budget issues, etc.
+      console.error('[tutor chat] streamText error', error)
+    },
     onFinish: async ({ text }) => {
       const { error: assistantMsgError } = await supabase
         .from('ai_chat_messages')
         .insert({
-          session_id: session.id,
+          session_id: sessionId,
           role: 'assistant',
           content: text,
         } as never)
 
       if (assistantMsgError) {
-        // In production: report to error tracking (Sentry, etc.).
-        // The stream has already been sent to the client, so the user saw the
-        // message but it will be missing from DB history on next page load.
         console.error('[tutor chat] CRITICAL: assistant message persistence failed', {
-          sessionId: session.id,
+          sessionId,
           error: assistantMsgError,
         })
       }
     },
   })
 
-  return result.toDataStreamResponse()
+  return result.toTextStreamResponse()
 }

@@ -6,6 +6,7 @@ import type { Message } from 'ai'
 import { TutorPanel } from '@/components/TutorPanel'
 import { LessonExperience } from '@/components/LessonExperience'
 import type { CurriculumModule } from '@/components/CurriculumTree'
+import { LabSection, type LabData, type LabSubmission } from '@/components/LabSection'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,7 +14,14 @@ import type { CurriculumModule } from '@/components/CurriculumTree'
 
 type LessonRow = Pick<
   Database['public']['Tables']['lessons']['Row'],
-  'id' | 'title' | 'module_id' | 'mux_playback_id' | 'duration_seconds' | 'transcript'
+  | 'id'
+  | 'title'
+  | 'module_id'
+  | 'mux_playback_id'
+  | 'duration_seconds'
+  | 'transcript'
+  | 'video_source'
+  | 'youtube_id'
 >
 
 type ProgressRow = Pick<
@@ -81,7 +89,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     supabase
       .from('lessons')
       .select(
-        'id, title, module_id, mux_playback_id, duration_seconds, transcript, modules(id, title, course_id, courses(id, title))',
+        'id, title, module_id, mux_playback_id, duration_seconds, transcript, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
       )
       .eq('id', lessonId)
       .single(),
@@ -175,6 +183,104 @@ export default async function LessonPage({ params }: LessonPageProps) {
     ((userProgressResult.data ?? []) as UserProgressRow[]).map((r) => [r.lesson_id, r.completed]),
   )
 
+  // ---------------------------------------------------------------------------
+  // Lab + latest submission + per-criterion scores
+  // RLS gates everything: a learner only sees a lab if they're enrolled in a
+  // cohort for its course (see migration 20260504000002), so we don't repeat
+  // the enrollment check here.
+  // ---------------------------------------------------------------------------
+  type LabRow = { id: string; title: string; brief_md: string }
+  type RubricItemRow = {
+    id: string
+    position: number
+    criterion: string
+    description: string
+    weight: number
+  }
+  type SubmissionRow = {
+    id: string
+    status: 'pending' | 'evaluating' | 'scored' | 'failed'
+    github_url: string
+    overall_stars: number | null
+    total_score: number
+    max_score: number
+    summary_md: string | null
+    error_message: string | null
+    submitted_at: string
+    scored_at: string | null
+  }
+  type ScoreRow = { rubric_item_id: string; stars: number; feedback_md: string }
+
+  const { data: labRowRaw } = await supabase
+    .from('labs')
+    .select('id, title, brief_md')
+    .eq('lesson_id', lessonId)
+    .maybeSingle()
+  const labRow = labRowRaw as unknown as LabRow | null
+
+  let labData: LabData | null = null
+  let latestSubmission: LabSubmission | null = null
+
+  if (labRow) {
+    const { data: rubricRows } = await supabase
+      .from('lab_rubric_items')
+      .select('id, position, criterion, description, weight')
+      .eq('lab_id', labRow.id)
+      .order('position', { ascending: true })
+
+    const rubric_items = ((rubricRows ?? []) as unknown as RubricItemRow[]).map((r) => ({
+      id: r.id,
+      position: r.position,
+      criterion: r.criterion,
+      description: r.description,
+      weight: r.weight,
+    }))
+
+    labData = {
+      id: labRow.id,
+      title: labRow.title,
+      brief_md: labRow.brief_md,
+      rubric_items,
+    }
+
+    const { data: subRows } = await supabase
+      .from('lab_submissions')
+      .select(
+        'id, status, github_url, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at',
+      )
+      .eq('user_id', user.id)
+      .eq('lab_id', labRow.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+
+    const subs = (subRows ?? []) as unknown as SubmissionRow[]
+    if (subs.length > 0) {
+      const sub = subs[0]
+      const { data: scoreRows } = await supabase
+        .from('lab_submission_scores')
+        .select('rubric_item_id, stars, feedback_md')
+        .eq('submission_id', sub.id)
+
+      latestSubmission = {
+        id: sub.id,
+        status: sub.status,
+        github_url: sub.github_url,
+        overall_stars: sub.overall_stars,
+        total_score: sub.total_score,
+        max_score: sub.max_score,
+        summary_md: sub.summary_md,
+        error_message: sub.error_message,
+        submitted_at: sub.submitted_at,
+        scored_at: sub.scored_at,
+        scores: ((scoreRows ?? []) as unknown as ScoreRow[]).map((s) => ({
+          rubric_item_id: s.rubric_item_id,
+          stars: s.stars,
+          feedback_md: s.feedback_md,
+        })),
+      }
+    }
+  }
+
   // Group lessons under modules → CurriculumTree shape
   const lessonsByModule = new Map<string, CourseLessonRow[]>()
   for (const l of allLessons) {
@@ -210,6 +316,15 @@ export default async function LessonPage({ params }: LessonPageProps) {
         isLessonComplete={isLessonComplete}
         clientQuestions={clientQuestions}
         curriculum={curriculum}
+        labSection={
+          labData ? (
+            <LabSection
+              lessonId={lesson.id}
+              lab={labData}
+              latestSubmission={latestSubmission}
+            />
+          ) : null
+        }
       />
       <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
     </>
