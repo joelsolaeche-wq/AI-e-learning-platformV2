@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { evaluateSubmission } from '@/lib/labs/evaluate'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/
+
+// Bumped because we run evaluation synchronously in this handler.
+export const maxDuration = 90
 
 // POST /api/labs/submit  body: { lessonId, githubUrl }
 // Verifies enrollment, finds the lab for this lesson, inserts a
@@ -119,14 +122,16 @@ export async function POST(request: Request) {
     )
   }
 
-  // Phase B: leave row as pending. Phase C will trigger evaluation here.
-  // (Use admin client at that point because the evaluator updates status,
-  // overall_stars, etc., which the learner has no UPDATE policy for.)
-  void createAdminClient
+  // Sync evaluation. Caller blocks ~30–60s; evaluator catches its own errors
+  // and persists 'failed' state so the row is always usable post-call. The
+  // result is informational only — the client refreshes the lesson page after
+  // submit and reads the row back.
+  const evalResult = await evaluateSubmission(inserted.id)
 
   return NextResponse.json({
     submissionId: inserted.id,
-    status: inserted.status,
     submittedAt: inserted.submitted_at,
+    evaluated: evalResult.ok,
+    evalError: evalResult.ok ? null : evalResult.error,
   })
 }
