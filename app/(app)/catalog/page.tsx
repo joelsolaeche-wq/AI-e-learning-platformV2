@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Clock, PlayCircle, ChevronRight, Star } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
+import { JoinByCodeForm } from '@/components/JoinByCodeForm'
 
 type CourseRow = Pick<
   Database['public']['Tables']['courses']['Row'],
@@ -29,11 +30,48 @@ export default async function CatalogPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const { data, error } = await supabase
-    .from('courses')
-    .select('id, title, slug, description, thumbnail_url')
-    .eq('is_published', true)
-    .order('created_at', { ascending: true })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from('profiles')
+    .select('role, org_id')
+    .eq('id', user.id)
+    .single()
+
+  const isAdminOrInstructor = profile?.role === 'admin' || profile?.role === 'instructor'
+
+  let data: CourseRow[] | null = null
+  let error = null
+
+  if (isAdminOrInstructor) {
+    // Admins and instructors see all published courses
+    const res = await supabase
+      .from('courses')
+      .select('id, title, slug, description, thumbnail_url')
+      .eq('is_published', true)
+      .order('created_at', { ascending: true })
+    data = res.data
+    error = res.error
+  } else if (profile?.org_id) {
+    // Learners see only courses assigned to their company
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await (supabase as any)
+      .from('course_companies')
+      .select('courses!inner(id, title, slug, description, thumbnail_url)')
+      .eq('company_id', profile.org_id)
+    error = res.error
+    if (res.data) {
+      data = res.data.map((r: { courses: CourseRow }) => r.courses)
+    }
+  } else {
+    // Learner with no company: fall back to all published (legacy behaviour)
+    const res = await supabase
+      .from('courses')
+      .select('id, title, slug, description, thumbnail_url')
+      .eq('is_published', true)
+      .order('created_at', { ascending: true })
+    data = res.data
+    error = res.error
+  }
 
   const courses: CourseRow[] = data ?? []
 
@@ -52,11 +90,12 @@ export default async function CatalogPage() {
             Cohort-based courses taught by engineers shipping AI in production.
           </p>
         </div>
-        <div className="flex gap-8">
-          <div>
+        <div className="flex flex-col items-end gap-3">
+          <div className="text-right">
             <div className="text-[28px] font-bold tracking-[-0.02em]">{courses.length}</div>
             <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Courses</div>
           </div>
+          <JoinByCodeForm />
         </div>
       </header>
 

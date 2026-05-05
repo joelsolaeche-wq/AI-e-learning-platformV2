@@ -1,12 +1,12 @@
 // app/(app)/dashboard/lesson/[lessonId]/page.tsx
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
 import type { Message } from 'ai'
 import { TutorPanel } from '@/components/TutorPanel'
 import { LessonExperience } from '@/components/LessonExperience'
 import type { CurriculumModule } from '@/components/CurriculumTree'
-import { LabSection, type LabData, type LabSubmission } from '@/components/LabSection'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,6 +84,8 @@ export default async function LessonPage({ params }: LessonPageProps) {
   } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
+  const admin = createAdminClient()
+
   // Phase 1: lesson (with module + course join) + lesson progress + quiz + chat
   const [lessonResult, progressResult, quizResult, chatHistory] = await Promise.all([
     supabase
@@ -158,6 +160,57 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const moduleTitle = lesson.modules?.title ?? 'Module'
   const courseTitle = lesson.modules?.courses?.title ?? null
 
+  // Fetch lab for this lesson + learner's latest submission
+  type LabRow = {
+    id: string; title: string; description: string | null; passing_score: number
+    lab_criteria: Array<{ id: string; name: string; description: string | null; weight: number; position: number }>
+  }
+  type SubmissionRow = {
+    id: string; status: 'pending' | 'evaluating' | 'evaluated'
+    submission_text: string | null; submission_url: string | null; submitted_at: string
+    lab_evaluations: Array<{ criteria_id: string; score: number; feedback: string; suggestion: string | null }>
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const labResult = await (admin as any)
+    .from('labs')
+    .select('id, title, description, passing_score, lab_criteria(id, name, description, weight, position)')
+    .eq('lesson_id', lessonId)
+    .maybeSingle()
+
+  const lab = (labResult.data as LabRow | null) ?? null
+
+  let latestSubmission: SubmissionRow | null = null
+  let activeCohortId: string | null = null
+  if (lab) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [subResult, enrollResult] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (admin as any)
+        .from('lab_submissions')
+        .select('id, status, submission_text, submission_url, submitted_at, lab_evaluations(criteria_id, score, feedback, suggestion)')
+        .eq('lab_id', lab.id)
+        .eq('user_id', user.id)
+        .order('submitted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      courseId
+        ? supabase
+            .from('enrollments')
+            .select('cohort_id, cohorts!inner(course_id)')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .eq('cohorts.course_id' as any, courseId)
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+    latestSubmission = (subResult.data as SubmissionRow | null) ?? null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    activeCohortId = (enrollResult.data as any)?.cohort_id ?? null
+  }
+
   // Phase 2: ALL modules + ALL lessons of the parent course (for unified curriculum)
   // + user's lesson progress (own-only via RLS)
   const [allModulesResult, allLessonsResult, userProgressResult] = await Promise.all([
@@ -182,104 +235,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const progressMap = new Map<string, boolean>(
     ((userProgressResult.data ?? []) as UserProgressRow[]).map((r) => [r.lesson_id, r.completed]),
   )
-
-  // ---------------------------------------------------------------------------
-  // Lab + latest submission + per-criterion scores
-  // RLS gates everything: a learner only sees a lab if they're enrolled in a
-  // cohort for its course (see migration 20260504000002), so we don't repeat
-  // the enrollment check here.
-  // ---------------------------------------------------------------------------
-  type LabRow = { id: string; title: string; brief_md: string }
-  type RubricItemRow = {
-    id: string
-    position: number
-    criterion: string
-    description: string
-    weight: number
-  }
-  type SubmissionRow = {
-    id: string
-    status: 'pending' | 'evaluating' | 'scored' | 'failed'
-    github_url: string
-    overall_stars: number | null
-    total_score: number
-    max_score: number
-    summary_md: string | null
-    error_message: string | null
-    submitted_at: string
-    scored_at: string | null
-  }
-  type ScoreRow = { rubric_item_id: string; stars: number; feedback_md: string }
-
-  const { data: labRowRaw } = await supabase
-    .from('labs')
-    .select('id, title, brief_md')
-    .eq('lesson_id', lessonId)
-    .maybeSingle()
-  const labRow = labRowRaw as unknown as LabRow | null
-
-  let labData: LabData | null = null
-  let latestSubmission: LabSubmission | null = null
-
-  if (labRow) {
-    const { data: rubricRows } = await supabase
-      .from('lab_rubric_items')
-      .select('id, position, criterion, description, weight')
-      .eq('lab_id', labRow.id)
-      .order('position', { ascending: true })
-
-    const rubric_items = ((rubricRows ?? []) as unknown as RubricItemRow[]).map((r) => ({
-      id: r.id,
-      position: r.position,
-      criterion: r.criterion,
-      description: r.description,
-      weight: r.weight,
-    }))
-
-    labData = {
-      id: labRow.id,
-      title: labRow.title,
-      brief_md: labRow.brief_md,
-      rubric_items,
-    }
-
-    const { data: subRows } = await supabase
-      .from('lab_submissions')
-      .select(
-        'id, status, github_url, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at',
-      )
-      .eq('user_id', user.id)
-      .eq('lab_id', labRow.id)
-      .order('submitted_at', { ascending: false })
-      .limit(1)
-
-    const subs = (subRows ?? []) as unknown as SubmissionRow[]
-    if (subs.length > 0) {
-      const sub = subs[0]
-      const { data: scoreRows } = await supabase
-        .from('lab_submission_scores')
-        .select('rubric_item_id, stars, feedback_md')
-        .eq('submission_id', sub.id)
-
-      latestSubmission = {
-        id: sub.id,
-        status: sub.status,
-        github_url: sub.github_url,
-        overall_stars: sub.overall_stars,
-        total_score: sub.total_score,
-        max_score: sub.max_score,
-        summary_md: sub.summary_md,
-        error_message: sub.error_message,
-        submitted_at: sub.submitted_at,
-        scored_at: sub.scored_at,
-        scores: ((scoreRows ?? []) as unknown as ScoreRow[]).map((s) => ({
-          rubric_item_id: s.rubric_item_id,
-          stars: s.stars,
-          feedback_md: s.feedback_md,
-        })),
-      }
-    }
-  }
 
   // Group lessons under modules → CurriculumTree shape
   const lessonsByModule = new Map<string, CourseLessonRow[]>()
@@ -316,15 +271,9 @@ export default async function LessonPage({ params }: LessonPageProps) {
         isLessonComplete={isLessonComplete}
         clientQuestions={clientQuestions}
         curriculum={curriculum}
-        labSection={
-          labData ? (
-            <LabSection
-              lessonId={lesson.id}
-              lab={labData}
-              latestSubmission={latestSubmission}
-            />
-          ) : null
-        }
+        lab={lab}
+        latestSubmission={latestSubmission}
+        cohortId={activeCohortId}
       />
       <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
     </>

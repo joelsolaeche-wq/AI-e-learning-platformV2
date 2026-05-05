@@ -1,7 +1,15 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Users, LayoutDashboard, Beaker } from 'lucide-react'
+import { Users, LayoutDashboard, Building2, BookOpen, UsersRound, FlaskConical } from 'lucide-react'
+
+const NAV = [
+  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/companies', label: 'Companies', icon: Building2 },
+  { href: '/admin/courses', label: 'Courses', icon: BookOpen },
+  { href: '/admin/cohorts', label: 'Cohorts', icon: UsersRound },
+  { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
+]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -15,7 +23,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('id', user.id)
     .single()
 
-  if (profile?.role !== 'admin') redirect('/dashboard')
+  if (!['admin', 'instructor'].includes(profile?.role)) redirect('/dashboard')
 
   return (
     <div className="flex min-h-screen">
@@ -26,20 +34,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </div>
         <nav className="flex flex-col gap-0.5">
-          <Link
-            href="/admin/users"
-            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
-          >
-            <Users size={15} strokeWidth={1.6} />
-            Users
-          </Link>
-          <Link
-            href="/admin/labs"
-            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
-          >
-            <Beaker size={15} strokeWidth={1.6} />
-            Labs
-          </Link>
+          {NAV.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+            >
+              <Icon size={15} strokeWidth={1.6} />
+              {label}
+            </Link>
+          ))}
         </nav>
         <div className="mt-auto">
           <Link
