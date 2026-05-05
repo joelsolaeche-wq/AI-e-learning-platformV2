@@ -35,22 +35,76 @@ export function TutorPanel({
 
   async function send(text?: string) {
     const content = (text ?? input).trim()
-    if (!content || loading) return
+    if (!content || loading || !lessonId) return
     setMessages((m) => [...m, { role: 'user', content }])
     setInput('')
     setLoading(true)
+
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/tutor/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, { role: 'user', content }], lessonId }),
+        body: JSON.stringify({ lessonId, message: content }),
       })
-      const data = await res.json()
-      setMessages((m) => [...m, { role: 'assistant', content: data.message ?? 'Sorry — something went wrong.' }])
-    } catch {
-      setMessages((m) => [...m, { role: 'assistant', content: 'Network error. Please try again.' }])
-    } finally {
+
+      if (!res.ok || !res.body) {
+        let serverError = ''
+        try {
+          const data = (await res.json()) as { error?: string }
+          serverError = data.error ?? ''
+        } catch {
+          try {
+            serverError = await res.text()
+          } catch {
+            // ignore
+          }
+        }
+        const baseMsg =
+          res.status === 401
+            ? 'Please sign in again.'
+            : res.status === 403
+            ? "You don't have access to this lesson — make sure you're enrolled in a cohort for this course."
+            : res.status === 400
+            ? 'That message is invalid or too long (max 2000 chars).'
+            : `Server error (${res.status}).`
+        const detail = serverError ? ` Details: ${serverError}` : ''
+        console.error('[TutorPanel] chat error', { status: res.status, error: serverError })
+        setLoading(false)
+        setMessages((m) => [...m, { role: 'assistant', content: baseMsg + detail }])
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let assistantText = ''
+      let added = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        assistantText += decoder.decode(value, { stream: true })
+        if (!added) {
+          added = true
+          setLoading(false)
+          setMessages((m) => [...m, { role: 'assistant', content: assistantText }])
+        } else {
+          setMessages((m) => {
+            const copy = [...m]
+            copy[copy.length - 1] = { role: 'assistant', content: assistantText }
+            return copy
+          })
+        }
+      }
+
+      if (!added) {
+        setLoading(false)
+        setMessages((m) => [...m, { role: 'assistant', content: 'Sorry — empty response.' }])
+      }
+    } catch (err) {
+      console.error('[TutorPanel] network error', err)
       setLoading(false)
+      const detail = err instanceof Error ? ` (${err.message})` : ''
+      setMessages((m) => [...m, { role: 'assistant', content: `Network error.${detail} Please try again.` }])
     }
   }
 
