@@ -5,8 +5,7 @@
 // service_role (lab_submissions has no UPDATE policy for learners — by design).
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { generateObject } from 'ai'
-import { createAnthropic } from '@ai-sdk/anthropic'
+import { generateJSON } from '@/lib/ai/model'
 import { z } from 'zod'
 import { fetchPublicRepoSnapshot, type GitHubFetchError } from '@/lib/github/fetch-repo'
 
@@ -176,14 +175,25 @@ ${repoText}
 
 Grade the repo now.`
 
-    const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+    const evalSchemaHint = `{
+  "items": array (one entry per rubric item) of {
+    "rubricItemId": string (UUID — copy verbatim from the RUBRIC ITEMS list above),
+    "stars": integer (1, 2, or 3),
+    "feedback": string (1-1500 chars; concrete and actionable)
+  },
+  "overallStars": integer (1, 2, or 3),
+  "summary": string (1-2000 chars; 2-4 sentences)
+}`
 
-    const { object } = await Promise.race([
-      generateObject({
-        model: anthropic('claude-sonnet-4-6'),
+    const parsed = await Promise.race([
+      generateJSON({
         schema: EvalSchema,
+        schemaHint: evalSchemaHint,
         system: systemPrompt,
         prompt: userPrompt,
+        // Per-item feedback (≤1500 chars × N items, ~6000 tok worst case) +
+        // 2000-char summary + JSON envelope. 8000 leaves headroom.
+        maxTokens: 8000,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(
@@ -192,8 +202,6 @@ Grade the repo now.`
         ),
       ),
     ])
-
-    const parsed = object as z.infer<typeof EvalSchema>
 
     // 5. Validate that the model returned exactly the rubric items we asked
     //    about. If it hallucinated an id or skipped one, fail loudly — the
