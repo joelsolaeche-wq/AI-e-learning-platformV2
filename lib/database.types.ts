@@ -214,6 +214,184 @@ export type Database = {
           },
         ]
       }
+      lab_rubric_items: {
+        Row: {
+          created_at: string
+          criterion: string
+          description: string
+          id: string
+          lab_id: string
+          position: number
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          criterion: string
+          description?: string
+          id?: string
+          lab_id: string
+          position: number
+          weight?: number
+        }
+        Update: {
+          created_at?: string
+          criterion?: string
+          description?: string
+          id?: string
+          lab_id?: string
+          position?: number
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lab_rubric_items_lab_id_fkey"
+            columns: ["lab_id"]
+            isOneToOne: false
+            referencedRelation: "labs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lab_submission_scores: {
+        Row: {
+          created_at: string
+          feedback_md: string
+          id: string
+          rubric_item_id: string
+          stars: number
+          submission_id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback_md?: string
+          id?: string
+          rubric_item_id: string
+          stars: number
+          submission_id: string
+        }
+        Update: {
+          created_at?: string
+          feedback_md?: string
+          id?: string
+          rubric_item_id?: string
+          stars?: number
+          submission_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lab_submission_scores_rubric_item_id_fkey"
+            columns: ["rubric_item_id"]
+            isOneToOne: false
+            referencedRelation: "lab_rubric_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lab_submission_scores_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "lab_submissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lab_submissions: {
+        Row: {
+          cohort_id: string | null
+          error_message: string | null
+          github_url: string
+          id: string
+          lab_id: string
+          max_score: number
+          overall_stars: number | null
+          scored_at: string | null
+          status: string
+          submitted_at: string
+          summary_md: string | null
+          total_score: number
+          user_id: string
+        }
+        Insert: {
+          cohort_id?: string | null
+          error_message?: string | null
+          github_url: string
+          id?: string
+          lab_id: string
+          max_score?: number
+          overall_stars?: number | null
+          scored_at?: string | null
+          status?: string
+          submitted_at?: string
+          summary_md?: string | null
+          total_score?: number
+          user_id: string
+        }
+        Update: {
+          cohort_id?: string | null
+          error_message?: string | null
+          github_url?: string
+          id?: string
+          lab_id?: string
+          max_score?: number
+          overall_stars?: number | null
+          scored_at?: string | null
+          status?: string
+          submitted_at?: string
+          summary_md?: string | null
+          total_score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lab_submissions_cohort_id_fkey"
+            columns: ["cohort_id"]
+            isOneToOne: false
+            referencedRelation: "cohorts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lab_submissions_lab_id_fkey"
+            columns: ["lab_id"]
+            isOneToOne: false
+            referencedRelation: "labs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      labs: {
+        Row: {
+          brief_md: string
+          created_at: string
+          id: string
+          lesson_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          brief_md?: string
+          created_at?: string
+          id?: string
+          lesson_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          brief_md?: string
+          created_at?: string
+          id?: string
+          lesson_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labs_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: true
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_progress: {
         Row: {
           completed: boolean

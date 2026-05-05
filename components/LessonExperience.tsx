@@ -32,6 +32,7 @@ interface LessonExperienceProps {
   isLessonComplete: boolean
   clientQuestions: ClientQuestion[]
   curriculum: CurriculumModule[]
+  labSection?: React.ReactNode
 }
 
 const TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
@@ -52,6 +53,7 @@ export function LessonExperience({
   isLessonComplete,
   clientQuestions,
   curriculum,
+  labSection,
 }: LessonExperienceProps) {
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
   const [marking, setMarking] = useState(false)
@@ -257,6 +259,8 @@ export function LessonExperience({
             />
           )}
         </section>
+
+        {labSection}
       </div>
 
       {/* Right: course curriculum sidebar */}
