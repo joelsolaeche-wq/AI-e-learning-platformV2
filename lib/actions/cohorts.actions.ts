@@ -207,6 +207,19 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
   return { error: null, success: true, id: data.id }
 }
 
+export async function unenrollUserAction(enrollmentId: string, cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any).from('enrollments').delete().eq('id', enrollmentId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, success: true }
+}
+
 export async function enrollUserAction(
   cohortId: string,
   userId: string,
