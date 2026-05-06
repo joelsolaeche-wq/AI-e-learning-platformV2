@@ -58,8 +58,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl)
     }
 
-    // Protect /admin routes — only admins allowed
-    if (pathname.startsWith('/admin') && profile?.role !== 'admin') {
+    // Protect /admin routes — admins and company_owners allowed
+    if (pathname.startsWith('/admin') && !['admin', 'company_owner'].includes(profile?.role)) {
       const dashboardUrl = request.nextUrl.clone()
       dashboardUrl.pathname = '/dashboard'
       return NextResponse.redirect(dashboardUrl)

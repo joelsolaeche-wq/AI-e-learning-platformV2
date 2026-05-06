@@ -1,8 +1,26 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Building2, Plus } from 'lucide-react'
 
 export default async function AdminCompaniesPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from('profiles')
+    .select('role, org_id')
+    .eq('id', user.id)
+    .single()
+
+  // company_owner goes directly to their workspace — no list needed
+  if (profile?.role === 'company_owner' && profile?.org_id) {
+    redirect(`/admin/companies/${profile.org_id}`)
+  }
+
   const admin = createAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: companies } = await (admin as any)
@@ -80,7 +98,7 @@ export default async function AdminCompaniesPage() {
                       href={`/admin/companies/${company.id}`}
                       className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
                     >
-                      Edit
+                      Open
                     </Link>
                   </td>
                 </tr>

@@ -1,14 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Users, LayoutDashboard, Building2, BookOpen, UsersRound } from 'lucide-react'
-
-const NAV = [
-  { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/companies', label: 'Companies', icon: Building2 },
-  { href: '/admin/courses', label: 'Courses', icon: BookOpen },
-  { href: '/admin/cohorts', label: 'Cohorts', icon: UsersRound },
-]
+import { LayoutDashboard, Building2 } from 'lucide-react'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -22,7 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     .eq('id', user.id)
     .single()
 
-  if (!['admin', 'instructor'].includes(profile?.role)) redirect('/dashboard')
+  if (!['admin', 'instructor', 'company_owner'].includes(profile?.role)) redirect('/dashboard')
 
   return (
     <div className="flex min-h-screen">
@@ -33,16 +26,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </div>
         </div>
         <nav className="flex flex-col gap-0.5">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
-            >
-              <Icon size={15} strokeWidth={1.6} />
-              {label}
-            </Link>
-          ))}
+          <Link
+            href="/admin/companies"
+            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+          >
+            <Building2 size={15} strokeWidth={1.6} />
+            Companies
+          </Link>
         </nav>
         <div className="mt-auto">
           <Link
