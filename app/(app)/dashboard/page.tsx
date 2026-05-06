@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import type { Database } from '@/lib/database.types'
 import { getLearnerStats } from '@/lib/learner-stats'
+import { JoinByCodeForm } from '@/components/JoinByCodeForm'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -317,18 +318,26 @@ export default async function DashboardPage() {
         <section className="rounded-2xl border border-border bg-card p-12 text-center">
           <Trophy size={36} className="mx-auto mb-3 text-muted-foreground" />
           <h2 className="text-lg font-semibold">No cohorts yet</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Browse the catalog to join your team&apos;s AI course.</p>
-          <Link href="/catalog" className="mt-4 inline-flex items-center gap-1 text-sm text-primary hover:underline">
-            Browse catalog <ChevronRight size={14} />
-          </Link>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Join with an invitation code from your team, or browse the catalog.
+          </p>
+          <div className="mt-6 flex flex-col items-center gap-3">
+            <JoinByCodeForm />
+            <Link href="/catalog" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+              Browse catalog <ChevronRight size={14} />
+            </Link>
+          </div>
         </section>
       ) : (
         <section className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-[18px] font-bold tracking-tight">Your cohorts</h2>
-            <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
-              View all <ChevronRight size={14} />
-            </Link>
+            <div className="flex items-center gap-3">
+              <JoinByCodeForm />
+              <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
+                View all <ChevronRight size={14} />
+              </Link>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

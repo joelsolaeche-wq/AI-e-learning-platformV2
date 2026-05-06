@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
 
-export type CohortActionResult = { error: string | null; success?: boolean; id?: string }
+export type CohortActionResult = { error: string | null; success?: boolean; id?: string; cohortTitle?: string }
 
 async function assertAdminOrInstructor() {
   const supabase = await createClient()
@@ -359,9 +359,17 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
     .update({ uses_count: invitation.uses_count + 1 })
     .eq('id', invitation.id)
 
+  // Fetch cohort title for toast feedback
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: cohort } = await (admin as any)
+    .from('cohorts')
+    .select('title')
+    .eq('id', invitation.cohort_id)
+    .single()
+
   revalidatePath('/catalog')
   revalidatePath('/dashboard')
-  return { error: null, success: true, id: invitation.cohort_id }
+  return { error: null, success: true, id: invitation.cohort_id, cohortTitle: cohort?.title as string | undefined }
 }
 
 // Form-compatible version for useActionState (used by JoinByCodeForm)
