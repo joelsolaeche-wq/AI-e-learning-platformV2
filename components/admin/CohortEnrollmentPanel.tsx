@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { UserPlus, Upload, X } from 'lucide-react'
 import { enrollUserAction, bulkEnrollAction } from '@/lib/actions/cohorts.actions'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 type Enrollment = {
   id: string
@@ -40,12 +41,16 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
 
   async function handleManualEnroll(userId: string) {
     setManualError(null)
+    const userName = userResults.find(u => u.id === userId)?.full_name
+      ?? userResults.find(u => u.id === userId)?.email
+      ?? 'User'
     startTransition(async () => {
       const result = await enrollUserAction(cohortId, userId)
       if (result.error) { setManualError(result.error); return }
       setManualEmail('')
       setUserResults([])
       setShowManual(false)
+      toast.success(`${userName} enrolled successfully`)
       router.refresh()
     })
   }

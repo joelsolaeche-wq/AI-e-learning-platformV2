@@ -129,6 +129,29 @@ export async function updateCohortAction(
   return { error: null, success: true }
 }
 
+export async function deleteCohortAction(cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (existing?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any).from('cohorts').delete().eq('id', cohortId)
+  if (error) return { error: error.message }
+
+  revalidatePath('/admin/cohorts')
+  return { error: null, success: true }
+}
+
 export async function archiveCohortAction(cohortId: string): Promise<CohortActionResult> {
   const caller = await assertAdminOrInstructor()
   if (!caller) return { error: 'Unauthorized.' }

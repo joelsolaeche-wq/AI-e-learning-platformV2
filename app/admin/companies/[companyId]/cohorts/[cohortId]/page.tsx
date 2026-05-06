@@ -65,7 +65,11 @@ export default async function CompanyCohortEditPage({
           </Link>
           <h2 className="mt-3 text-xl font-bold">{cohortRes.data.title}</h2>
         </div>
-        <CohortActionsBar cohortId={cohortId} status={cohortRes.data.status} />
+        <CohortActionsBar
+          cohortId={cohortId}
+          status={cohortRes.data.status}
+          backPath={`/admin/companies/${companyId}/cohorts`}
+        />
       </div>
 
       <CohortTabs
