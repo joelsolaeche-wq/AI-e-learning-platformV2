@@ -6,7 +6,7 @@ import { Clock, ChevronRight, PlayCircle, Lock, Sparkles, Check, FlaskConical } 
 import Link from 'next/link'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { QuizSection } from '@/components/QuizSection'
-import { LabPanel } from '@/components/LabPanel'
+import { LabSection, type LabData, type LabSubmission } from '@/components/LabSection'
 import { Ring } from '@/components/ui/Ring'
 import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 import { cn } from '@/lib/utils'
@@ -15,38 +15,6 @@ type ClientQuestion = {
   id: string
   question: string
   options: string[]
-}
-
-type LabCriterion = {
-  id: string
-  name: string
-  description: string | null
-  weight: number
-  position: number
-}
-
-type LabEvaluation = {
-  criteria_id: string
-  score: number
-  feedback: string
-  suggestion: string | null
-}
-
-type LabSubmission = {
-  id: string
-  status: 'pending' | 'evaluating' | 'evaluated'
-  submission_text: string | null
-  submission_url: string | null
-  submitted_at: string
-  lab_evaluations: LabEvaluation[]
-}
-
-type LabData = {
-  id: string
-  title: string
-  description: string | null
-  passing_score: number
-  lab_criteria: LabCriterion[]
 }
 
 interface LessonExperienceProps {
@@ -67,7 +35,6 @@ interface LessonExperienceProps {
   curriculum: CurriculumModule[]
   lab?: LabData | null
   latestSubmission?: LabSubmission | null
-  cohortId?: string | null
 }
 
 const BASE_TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
@@ -91,7 +58,6 @@ export function LessonExperience({
   curriculum,
   lab = null,
   latestSubmission = null,
-  cohortId = null,
 }: LessonExperienceProps) {
   const TABS = lab ? ALL_TABS : BASE_TABS
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
@@ -240,7 +206,7 @@ export function LessonExperience({
               </div>
             )}
             {activeTab === 'Lab' && lab && (
-              <LabPanel lab={lab} latestSubmission={latestSubmission} cohortId={cohortId} />
+              <LabSection lessonId={lesson.id} lab={lab} latestSubmission={latestSubmission} />
             )}
           </div>
         </div>
