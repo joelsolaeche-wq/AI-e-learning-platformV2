@@ -101,8 +101,19 @@ export async function createUserAction(
   _prevState: AdminActionResult,
   formData: FormData,
 ): Promise<AdminActionResult> {
-  const caller = await assertAdmin()
-  if (!caller) return { error: 'Unauthorized.' }
+  // company_owner may also create users (scoped to their own org_id via the form hidden input)
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) return { error: 'Unauthorized.' }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: callerProfile } = await (supabase as any)
+    .from('profiles').select('role, org_id').eq('id', authUser.id).single()
+  if (!['admin', 'company_owner'].includes(callerProfile?.role)) return { error: 'Unauthorized.' }
+  // Prevent company_owner from creating users outside their own company
+  const requestedOrgId = (formData.get('org_id') as string | null) || null
+  if (callerProfile?.role === 'company_owner' && requestedOrgId !== callerProfile?.org_id) {
+    return { error: 'Unauthorized: you can only add members to your own company.' }
+  }
 
   const email = (formData.get('email') as string | null)?.trim().toLowerCase() ?? ''
   const password = (formData.get('password') as string | null) ?? ''

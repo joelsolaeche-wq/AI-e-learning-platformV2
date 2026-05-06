@@ -14,10 +14,11 @@ async function assertAdminOrInstructor() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: profile } = await (supabase as any)
     .from('profiles')
-    .select('role')
+    .select('role, org_id')
     .eq('id', user.id)
     .single()
-  return ['admin', 'instructor'].includes(profile?.role) ? user : null
+  if (!['admin', 'instructor', 'company_owner'].includes(profile?.role)) return null
+  return { user, role: profile.role as string, orgId: profile.org_id as string | null }
 }
 
 export async function createCohortAction(
@@ -40,6 +41,11 @@ export async function createCohortAction(
 
   if (!title) return { error: 'Title is required.' }
   if (!starts_at) return { error: 'Start date is required.' }
+
+  // company_owner may only create cohorts for their own company
+  if (caller.role === 'company_owner' && company_id !== caller.orgId) {
+    return { error: 'Unauthorized: you can only create cohorts for your own company.' }
+  }
 
   const admin = createAdminClient()
   // course_id keeps the first selected course as a backward-compat hint
@@ -87,6 +93,17 @@ export async function updateCohortAction(
   if (!title) return { error: 'Title is required.' }
 
   const admin = createAdminClient()
+
+  // company_owner may only update cohorts that belong to their company
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (existing?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
   const primaryCourseId = courseIds[0] ?? null
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,7 +272,7 @@ export async function generateInvitationCodeAction(
         code,
         max_uses: maxUses ?? null,
         expires_at,
-        created_by: caller.id,
+        created_by: caller.user.id,
       })
 
     if (!error) {

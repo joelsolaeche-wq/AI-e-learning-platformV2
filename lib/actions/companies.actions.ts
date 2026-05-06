@@ -113,12 +113,23 @@ export async function restoreCompanyAction(companyId: string): Promise<CompanyAc
   return { error: null, success: true }
 }
 
+async function assertAdminOrCompanyOwnerFor(companyId: string): Promise<boolean> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from('profiles').select('role, org_id').eq('id', user.id).single()
+  if (profile?.role === 'admin') return true
+  if (profile?.role === 'company_owner' && profile?.org_id === companyId) return true
+  return false
+}
+
 export async function assignCourseToCompanyAction(
   courseId: string,
   companyId: string,
 ): Promise<CompanyActionResult> {
-  const caller = await assertAdmin()
-  if (!caller) return { error: 'Unauthorized.' }
+  if (!(await assertAdminOrCompanyOwnerFor(companyId))) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -136,8 +147,7 @@ export async function unassignCourseFromCompanyAction(
   courseId: string,
   companyId: string,
 ): Promise<CompanyActionResult> {
-  const caller = await assertAdmin()
-  if (!caller) return { error: 'Unauthorized.' }
+  if (!(await assertAdminOrCompanyOwnerFor(companyId))) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
