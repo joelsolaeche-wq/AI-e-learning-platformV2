@@ -30,7 +30,7 @@ async function assertAdmin() {
 
 export async function updateUserRoleAction(
   userId: string,
-  role: 'learner' | 'instructor' | 'admin',
+  role: 'learner' | 'instructor' | 'admin' | 'company_owner',
 ): Promise<AdminActionResult> {
   const caller = await assertAdmin()
   if (!caller) return { error: 'Unauthorized.' }
