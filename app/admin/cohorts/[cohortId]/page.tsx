@@ -11,13 +11,15 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
   const { cohortId } = await params
   const admin = createAdminClient()
 
-  const [cohortRes, coursesRes, companiesRes, enrollmentsRes, invitationsRes] = await Promise.all([
+  const [cohortRes, coursesRes, companiesRes, cohortCoursesRes, enrollmentsRes, invitationsRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('cohorts').select('*').eq('id', cohortId).single(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('organizations').select('id, name').order('name'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (admin as any).from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any)
       .from('enrollments')
@@ -33,6 +35,10 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
   ])
 
   if (!cohortRes.data) notFound()
+
+  const selectedCourseIds: string[] = (cohortCoursesRes.data ?? []).map(
+    (r: { course_id: string }) => r.course_id,
+  )
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -55,6 +61,7 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
           cohort={cohortRes.data}
           courses={coursesRes.data ?? []}
           companies={companiesRes.data ?? []}
+          selectedCourseIds={selectedCourseIds}
         />
       </section>
 
