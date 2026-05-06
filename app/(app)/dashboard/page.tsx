@@ -355,6 +355,7 @@ export default async function DashboardPage() {
               const resumeHref = firstUnfinished
                 ? `/dashboard/lesson/${firstUnfinished.id}`
                 : `/catalog/${cohort.course_id}`
+              const isNew = Date.now() - new Date(enrollment.enrolled_at).getTime() < 48 * 60 * 60 * 1000
 
               return (
                 <div
@@ -369,6 +370,11 @@ export default async function DashboardPage() {
                     <span className="font-mono text-[52px] font-semibold text-white/90 drop-shadow-[0_0_24px_rgba(0,0,0,0.4)]">
                       {hue.symbol}
                     </span>
+                    {isNew && (
+                      <span className="absolute left-2.5 top-2.5 rounded-full bg-primary px-2.5 py-0.5 text-[10.5px] font-bold text-primary-foreground shadow-[0_0_12px_rgba(139,92,246,0.7)]">
+                        New
+                      </span>
+                    )}
                     <span className={`absolute right-2.5 top-2.5 rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold backdrop-blur-md ${badge.cls}`}>
                       {badge.label}
                     </span>
