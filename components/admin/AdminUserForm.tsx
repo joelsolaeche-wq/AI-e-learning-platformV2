@@ -26,10 +26,18 @@ const ROLES = [
 
 const initialState = { error: null }
 
-export function AdminUserForm({ user, companies = [] }: { user: UserData; companies?: Company[] }) {
+export function AdminUserForm({
+  user,
+  companies = [],
+  presetRole,
+}: {
+  user: UserData
+  companies?: Company[]
+  presetRole?: string
+}) {
   const [state, formAction, isPending] = useActionState(adminUpdateUserAction, initialState)
   const [fullName, setFullName] = useState(user.full_name ?? '')
-  const [role, setRole] = useState(user.role)
+  const [role, setRole] = useState(presetRole || user.role)
   const [isActive, setIsActive] = useState(user.is_active)
   const [orgId, setOrgId] = useState(user.org_id ?? '')
 
@@ -110,7 +118,7 @@ export function AdminUserForm({ user, companies = [] }: { user: UserData; compan
               id="adm-org"
               value={orgId}
               onChange={(e) => setOrgId(e.target.value)}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
             >
               <option value="">Select company…</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

@@ -224,7 +224,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                           <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => handleRoleChange(user.id, 'admin')}>
                             Rol: Admin
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => router.push(`/admin/users/${user.id}`)}>
+                          <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => router.push(`/admin/users/${user.id}?preset_role=company_owner`)}>
                             Rol: Company Owner…
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />

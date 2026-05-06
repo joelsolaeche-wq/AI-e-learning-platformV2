@@ -6,10 +6,12 @@ import { ArrowLeft } from 'lucide-react'
 
 export default async function AdminUserDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ userId: string }>
+  searchParams: Promise<{ preset_role?: string }>
 }) {
-  const { userId } = await params
+  const [{ userId }, { preset_role }] = await Promise.all([params, searchParams])
   const admin = createAdminClient()
 
   const [userRes, companiesRes] = await Promise.all([
@@ -43,7 +45,7 @@ export default async function AdminUserDetailPage({
           <p className="text-sm text-muted-foreground">{userRes.data.email}</p>
         </div>
       </div>
-      <AdminUserForm user={userRes.data} companies={companiesRes.data ?? []} />
+      <AdminUserForm user={userRes.data} companies={companiesRes.data ?? []} presetRole={preset_role} />
     </div>
   )
 }
