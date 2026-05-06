@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
 import { Plus, Users } from 'lucide-react'
+import { BulkMembersPanel } from '@/components/admin/BulkMembersPanel'
 
 type UserRow = {
   id: string
@@ -39,6 +40,7 @@ export default async function CompanyMembersPage({
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">{rows.length} member{rows.length !== 1 ? 's' : ''}</p>
         <div className="flex gap-2">
+          <BulkMembersPanel companyId={companyId} />
           <Link
             href="members/new"
             className="inline-flex h-8 items-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"

@@ -28,6 +28,79 @@ async function assertAdmin() {
   return profile?.role === 'admin' ? user : null
 }
 
+async function assertAdminOrOwner() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from('profiles')
+    .select('role, org_id')
+    .eq('id', user.id)
+    .single()
+
+  if (!['admin', 'company_owner'].includes(profile?.role)) return null
+  return { user, role: profile.role as string, orgId: profile.org_id as string | null }
+}
+
+export type BulkMembersResult = { assigned: number; skipped: number; errors: string[] }
+
+export async function bulkAssignMembersAction(
+  companyId: string,
+  emails: string[],
+): Promise<BulkMembersResult> {
+  const caller = await assertAdminOrOwner()
+  if (!caller) return { assigned: 0, skipped: 0, errors: ['Unauthorized.'] }
+
+  // company_owner can only manage their own company
+  if (caller.role === 'company_owner' && caller.orgId !== companyId) {
+    return { assigned: 0, skipped: 0, errors: ['Unauthorized.'] }
+  }
+
+  const admin = createAdminClient()
+  let assigned = 0
+  let skipped = 0
+  const errors: string[] = []
+
+  for (const email of emails) {
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed) continue
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (admin as any)
+      .from('profiles')
+      .select('id, org_id')
+      .eq('email', trimmed)
+      .maybeSingle()
+
+    if (!profile) {
+      errors.push(`User not found: ${trimmed}`)
+      continue
+    }
+
+    if (profile.org_id === companyId) {
+      skipped++
+      continue
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (admin as any)
+      .from('profiles')
+      .update({ org_id: companyId, updated_at: new Date().toISOString() })
+      .eq('id', profile.id)
+
+    if (error) {
+      errors.push(`${trimmed}: ${error.message}`)
+    } else {
+      assigned++
+    }
+  }
+
+  revalidatePath(`/admin/companies/${companyId}/members`)
+  return { assigned, skipped, errors }
+}
+
 export async function updateUserRoleAction(
   userId: string,
   role: 'learner' | 'instructor' | 'admin' | 'company_owner',
