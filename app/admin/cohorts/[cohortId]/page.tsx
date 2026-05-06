@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { CohortForm } from '@/components/admin/CohortForm'
 import { CohortEnrollmentPanel } from '@/components/admin/CohortEnrollmentPanel'
 import { CohortInvitationPanel } from '@/components/admin/CohortInvitationPanel'
@@ -13,10 +13,10 @@ export default async function EditCohortPage({
   searchParams,
 }: {
   params: Promise<{ cohortId: string }>
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; step?: string }>
 }) {
   const { cohortId } = await params
-  const { tab } = await searchParams
+  const { tab, step } = await searchParams
   const admin = createAdminClient()
 
   const [cohortRes, coursesRes, companiesRes, cohortCoursesRes, enrollmentsRes, invitationsRes] = await Promise.all([
@@ -49,6 +49,7 @@ export default async function EditCohortPage({
   )
 
   const enrollments = enrollmentsRes.data ?? []
+  const isStep2 = step === '2'
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -83,7 +84,29 @@ export default async function EditCohortPage({
           {
             id: 'members',
             label: `Members (${enrollments.length})`,
-            content: <CohortEnrollmentPanel cohortId={cohortId} enrollments={enrollments} />,
+            content: (
+              <div className="space-y-5">
+                {isStep2 && (
+                  <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                    <div className="flex items-center gap-2 opacity-40">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-[11px] font-medium">
+                        1
+                      </span>
+                      <span className="text-sm line-through">Cohort details</span>
+                    </div>
+                    <ChevronRight size={14} className="text-muted-foreground" />
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                        2
+                      </span>
+                      <span className="text-sm font-medium">Add members</span>
+                    </div>
+                    <span className="ml-auto text-xs text-emerald-400">Cohort created ✓</span>
+                  </div>
+                )}
+                <CohortEnrollmentPanel cohortId={cohortId} enrollments={enrollments} />
+              </div>
+            ),
           },
           {
             id: 'invitations',

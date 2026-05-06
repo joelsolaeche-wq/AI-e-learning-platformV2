@@ -59,7 +59,7 @@ export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockC
 
   useEffect(() => {
     if (state.success && !isEdit && state.id) {
-      router.push(`${redirectBase ?? '/admin/cohorts'}/${state.id}?tab=members`)
+      router.push(`${redirectBase ?? '/admin/cohorts'}/${state.id}?tab=members&step=2`)
     }
   }, [state.success, state.id, isEdit, router, redirectBase])
 
@@ -229,7 +229,7 @@ export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockC
         type="submit" disabled={isPending}
         className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
       >
-        {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Create cohort'}
+        {isPending ? 'Saving…' : isEdit ? 'Save changes' : 'Save & continue →'}
       </button>
     </form>
   )
