@@ -123,9 +123,9 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
             </Link>
           )
         })}
-        {user.role === 'admin' && (
+        {(user.role === 'admin' || user.role === 'company_owner') && (
           <Link
-            href="/admin/users"
+            href={user.role === 'company_owner' ? '/admin/companies' : '/admin/users'}
             className={cn(
               'relative flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-[13.5px] font-medium transition-all',
               pathname.startsWith('/admin')
@@ -137,7 +137,7 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
               <span className="absolute -left-[14px] top-2 bottom-2 w-[3px] rounded bg-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.6)]" />
             )}
             <ShieldCheck size={17} strokeWidth={1.6} />
-            <span>Admin</span>
+            <span>{user.role === 'company_owner' ? 'My Company' : 'Admin'}</span>
           </Link>
         )}
       </nav>

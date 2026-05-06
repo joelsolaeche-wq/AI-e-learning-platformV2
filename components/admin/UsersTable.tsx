@@ -26,6 +26,14 @@ const ROLE_STYLES: Record<string, string> = {
   admin: 'bg-violet-500/15 text-violet-400 border-violet-500/25',
   instructor: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/25',
   learner: 'bg-slate-500/15 text-slate-400 border-slate-500/25',
+  company_owner: 'bg-amber-500/15 text-amber-400 border-amber-500/25',
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'admin',
+  instructor: 'instructor',
+  learner: 'learner',
+  company_owner: 'company owner',
 }
 
 const PRESET_AVATARS: Record<string, { bg: string; symbol: string }> = {
@@ -119,6 +127,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
           <option value="learner">Learner</option>
           <option value="instructor">Instructor</option>
           <option value="admin">Admin</option>
+          <option value="company_owner">Company Owner</option>
         </select>
         <select
           value={activeFilter}
@@ -179,7 +188,7 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                     </TableCell>
                     <TableCell>
                       <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium', ROLE_STYLES[user.role] ?? ROLE_STYLES.learner)}>
-                        {user.role}
+                        {ROLE_LABELS[user.role] ?? user.role}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -214,6 +223,9 @@ export function UsersTable({ users, q, roleFilter, activeFilter, page, totalPage
                           </DropdownMenuItem>
                           <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => handleRoleChange(user.id, 'admin')}>
                             Rol: Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="cursor-pointer text-sm" onClick={() => router.push(`/admin/users/${user.id}?preset_role=company_owner`)}>
+                            Rol: Company Owner…
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem

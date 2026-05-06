@@ -113,7 +113,7 @@ export function LabEditorForm({
     if (res.error) {
       setSaveError(res.error)
     } else {
-      router.push('/admin/labs')
+      router.refresh()
     }
   }
 

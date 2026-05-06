@@ -14,10 +14,11 @@ async function assertAdminOrInstructor() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: profile } = await (supabase as any)
     .from('profiles')
-    .select('role')
+    .select('role, org_id')
     .eq('id', user.id)
     .single()
-  return ['admin', 'instructor'].includes(profile?.role) ? user : null
+  if (!['admin', 'instructor', 'company_owner'].includes(profile?.role)) return null
+  return { user, role: profile.role as string, orgId: profile.org_id as string | null }
 }
 
 export async function createCohortAction(
@@ -27,7 +28,7 @@ export async function createCohortAction(
   const caller = await assertAdminOrInstructor()
   if (!caller) return { error: 'Unauthorized.' }
 
-  const course_id = formData.get('course_id') as string
+  const courseIds = formData.getAll('course_ids') as string[]
   const company_id = (formData.get('company_id') as string | null) || null
   const title = (formData.get('title') as string | null)?.trim() ?? ''
   const starts_at = formData.get('starts_at') as string
@@ -38,19 +39,33 @@ export async function createCohortAction(
   const notes = (formData.get('notes') as string | null)?.trim() || null
   const status = (formData.get('status') as string) || 'draft'
 
-  if (!course_id) return { error: 'Course is required.' }
   if (!title) return { error: 'Title is required.' }
   if (!starts_at) return { error: 'Start date is required.' }
 
+  // company_owner may only create cohorts for their own company
+  if (caller.role === 'company_owner' && company_id !== caller.orgId) {
+    return { error: 'Unauthorized: you can only create cohorts for your own company.' }
+  }
+
   const admin = createAdminClient()
+  // course_id keeps the first selected course as a backward-compat hint
+  const primaryCourseId = courseIds[0] ?? null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (admin as any)
     .from('cohorts')
-    .insert({ course_id, company_id, title, starts_at, ends_at, max_seats, modality, notes, status })
+    .insert({ course_id: primaryCourseId, company_id, title, starts_at, ends_at, max_seats, modality, notes, status })
     .select('id')
     .single()
 
   if (error) return { error: error.message }
+
+  if (courseIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from('cohort_courses')
+      .insert(courseIds.map((cId) => ({ cohort_id: data.id, course_id: cId })))
+  }
+
   revalidatePath('/admin/cohorts')
   return { error: null, success: true, id: data.id }
 }
@@ -63,6 +78,7 @@ export async function updateCohortAction(
   if (!caller) return { error: 'Unauthorized.' }
 
   const cohortId = formData.get('cohort_id') as string
+  const courseIds = formData.getAll('course_ids') as string[]
   const title = (formData.get('title') as string | null)?.trim() ?? ''
   const starts_at = formData.get('starts_at') as string
   const ends_at = (formData.get('ends_at') as string | null) || null
@@ -77,13 +93,37 @@ export async function updateCohortAction(
   if (!title) return { error: 'Title is required.' }
 
   const admin = createAdminClient()
+
+  // company_owner may only update cohorts that belong to their company
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (existing?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
+  const primaryCourseId = courseIds[0] ?? null
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('cohorts')
-    .update({ title, starts_at, ends_at, max_seats, modality, notes, status, company_id })
+    .update({ course_id: primaryCourseId, title, starts_at, ends_at, max_seats, modality, notes, status, company_id })
     .eq('id', cohortId)
 
   if (error) return { error: error.message }
+
+  // Replace cohort_courses: delete all then re-insert selection
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (admin as any).from('cohort_courses').delete().eq('cohort_id', cohortId)
+  if (courseIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (admin as any)
+      .from('cohort_courses')
+      .insert(courseIds.map((cId) => ({ cohort_id: cohortId, course_id: cId })))
+  }
+
   revalidatePath('/admin/cohorts')
   revalidatePath(`/admin/cohorts/${cohortId}`)
   return { error: null, success: true }
@@ -232,7 +272,7 @@ export async function generateInvitationCodeAction(
         code,
         max_uses: maxUses ?? null,
         expires_at,
-        created_by: caller.id,
+        created_by: caller.user.id,
       })
 
     if (!error) {

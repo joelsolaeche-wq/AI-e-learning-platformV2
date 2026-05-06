@@ -7,8 +7,12 @@ import { CohortEnrollmentPanel } from '@/components/admin/CohortEnrollmentPanel'
 import { CohortInvitationPanel } from '@/components/admin/CohortInvitationPanel'
 import { CohortActionsBar } from '@/components/admin/CohortActionsBar'
 
-export default async function EditCohortPage({ params }: { params: Promise<{ cohortId: string }> }) {
-  const { cohortId } = await params
+export default async function CompanyCohortEditPage({
+  params,
+}: {
+  params: Promise<{ companyId: string; cohortId: string }>
+}) {
+  const { companyId, cohortId } = await params
   const admin = createAdminClient()
 
   const [cohortRes, coursesRes, companiesRes, cohortCoursesRes, enrollmentsRes, invitationsRes] = await Promise.all([
@@ -36,6 +40,9 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
 
   if (!cohortRes.data) notFound()
 
+  // Guard: this cohort must belong to this company's workspace
+  if (cohortRes.data.company_id !== companyId) notFound()
+
   const selectedCourseIds: string[] = (cohortCoursesRes.data ?? []).map(
     (r: { course_id: string }) => r.course_id,
   )
@@ -45,18 +52,18 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
       <div className="flex items-start justify-between">
         <div>
           <Link
-            href="/admin/cohorts"
+            href="../cohorts"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft size={14} /> Cohorts
           </Link>
-          <h1 className="mt-3 text-2xl font-bold">{cohortRes.data.title}</h1>
+          <h2 className="mt-3 text-xl font-bold">{cohortRes.data.title}</h2>
         </div>
         <CohortActionsBar cohortId={cohortId} status={cohortRes.data.status} />
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Details</h2>
+        <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Details</h3>
         <CohortForm
           cohort={cohortRes.data}
           courses={coursesRes.data ?? []}
@@ -66,14 +73,14 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+        <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
           Enrollments ({(enrollmentsRes.data ?? []).length})
-        </h2>
+        </h3>
         <CohortEnrollmentPanel cohortId={cohortId} enrollments={enrollmentsRes.data ?? []} />
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Invitation codes</h2>
+        <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Invitation codes</h3>
         <CohortInvitationPanel cohortId={cohortId} invitations={invitationsRes.data ?? []} />
       </section>
     </div>

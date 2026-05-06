@@ -6,20 +6,30 @@ import { ArrowLeft } from 'lucide-react'
 
 export default async function AdminUserDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ userId: string }>
+  searchParams: Promise<{ preset_role?: string }>
 }) {
-  const { userId } = await params
+  const [{ userId }, { preset_role }] = await Promise.all([params, searchParams])
   const admin = createAdminClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: user } = await (admin as any)
-    .from('profiles')
-    .select('id, email, full_name, role, is_active')
-    .eq('id', userId)
-    .single()
+  const [userRes, companiesRes] = await Promise.all([
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (admin as any)
+      .from('profiles')
+      .select('id, email, full_name, role, is_active, org_id')
+      .eq('id', userId)
+      .single(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (admin as any)
+      .from('organizations')
+      .select('id, name')
+      .is('deleted_at', null)
+      .order('name'),
+  ])
 
-  if (!user) notFound()
+  if (!userRes.data) notFound()
 
   return (
     <div className="max-w-lg space-y-6">
@@ -32,10 +42,10 @@ export default async function AdminUserDetailPage({
         </Link>
         <div>
           <h1 className="text-xl font-bold">Edit user</h1>
-          <p className="text-sm text-muted-foreground">{user.email}</p>
+          <p className="text-sm text-muted-foreground">{userRes.data.email}</p>
         </div>
       </div>
-      <AdminUserForm user={user} />
+      <AdminUserForm user={userRes.data} companies={companiesRes.data ?? []} presetRole={preset_role} />
     </div>
   )
 }
