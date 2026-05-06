@@ -11,11 +11,11 @@ export default async function NewCompanyCohortPage({
   const { companyId } = await params
   const admin = createAdminClient()
 
-  const [coursesRes, companiesRes] = await Promise.all([
+  const [coursesRes, companyRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
+    (admin as any).from('organizations').select('id, name').eq('id', companyId).single(),
   ])
 
   return (
@@ -31,8 +31,9 @@ export default async function NewCompanyCohortPage({
       </div>
       <CohortForm
         courses={coursesRes.data ?? []}
-        companies={companiesRes.data ?? []}
+        companies={companyRes.data ? [companyRes.data] : []}
         defaultCompanyId={companyId}
+        lockCompany
         redirectTo={`/admin/companies/${companyId}/cohorts`}
       />
     </div>

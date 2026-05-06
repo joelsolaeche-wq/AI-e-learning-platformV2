@@ -35,11 +35,12 @@ interface Props {
   courses: Course[]
   companies: Company[]
   defaultCompanyId?: string
+  lockCompany?: boolean
   redirectTo?: string
   selectedCourseIds?: string[]
 }
 
-export function CohortForm({ cohort, courses, companies, defaultCompanyId, redirectTo, selectedCourseIds }: Props) {
+export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockCompany, redirectTo, selectedCourseIds }: Props) {
   const isEdit = !!cohort
 
   // Initialise selection: for edit mode use selectedCourseIds from DB (M2M);
@@ -131,14 +132,23 @@ export function CohortForm({ cohort, courses, companies, defaultCompanyId, redir
 
       <div className="space-y-1.5">
         <label className="text-[13px] font-medium" htmlFor="company_id">Company</label>
-        <select
-          id="company_id" name="company_id"
-          defaultValue={cohort?.company_id ?? defaultCompanyId ?? ''}
-          className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
-        >
-          <option value="">No company</option>
-          {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        {lockCompany ? (
+          <>
+            <input type="hidden" name="company_id" value={defaultCompanyId ?? ''} />
+            <div className="w-full rounded-lg border border-border bg-secondary/50 px-3 py-2 text-sm text-muted-foreground">
+              {companies.find(c => c.id === defaultCompanyId)?.name ?? defaultCompanyId}
+            </div>
+          </>
+        ) : (
+          <select
+            id="company_id" name="company_id"
+            defaultValue={cohort?.company_id ?? defaultCompanyId ?? ''}
+            className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
+          >
+            <option value="">No company</option>
+            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
