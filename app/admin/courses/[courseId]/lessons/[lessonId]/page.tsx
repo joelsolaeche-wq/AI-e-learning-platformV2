@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { LessonForm } from '@/components/admin/LessonForm'
-import { LabForm } from '@/components/admin/LabForm'
+import { LabEditorForm } from '@/components/admin/LabEditorForm'
+import type { RubricItemInput } from '@/lib/actions/lab.actions'
 
 export default async function EditLessonPage({
   params,
@@ -13,6 +14,7 @@ export default async function EditLessonPage({
   const { courseId, lessonId } = await params
   const admin = createAdminClient()
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [lessonResult, labResult] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any)
@@ -23,7 +25,7 @@ export default async function EditLessonPage({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (admin as any)
       .from('labs')
-      .select('id, title, description, context_instructions, passing_score, lab_criteria(id, name, description, weight, position)')
+      .select('id, title, brief_md')
       .eq('lesson_id', lessonId)
       .maybeSingle(),
   ])
@@ -31,7 +33,24 @@ export default async function EditLessonPage({
   if (!lessonResult.data) notFound()
 
   const lesson = lessonResult.data
-  const lab = labResult.data ?? null
+  const existingLab = labResult.data ?? null
+
+  let rubricItems: RubricItemInput[] = []
+  if (existingLab) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rubric } = await (admin as any)
+      .from('lab_rubric_items')
+      .select('criterion, description, weight, position')
+      .eq('lab_id', existingLab.id)
+      .order('position', { ascending: true })
+    rubricItems = (rubric ?? []).map((r: { criterion: string; description: string; weight: number }) => ({
+      criterion: r.criterion,
+      description: r.description,
+      weight: r.weight,
+    }))
+  }
+
+  const hasTranscript = Boolean(lesson.transcript && lesson.transcript.trim().length > 0)
 
   return (
     <div className="max-w-xl space-y-6">
@@ -45,23 +64,28 @@ export default async function EditLessonPage({
         <h1 className="mt-3 text-2xl font-bold">Edit lesson</h1>
       </div>
 
-      {/* Lesson content */}
       <section>
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Content</h2>
         <LessonForm lesson={lesson} courseId={courseId} />
       </section>
 
-      {/* Lab */}
       <section className="border-t border-border pt-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Lab</h2>
-          {lab && (
+          {existingLab && (
             <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
               Active
             </span>
           )}
         </div>
-        <LabForm lab={lab} lessonId={lessonId} />
+        <LabEditorForm
+          lessonId={lessonId}
+          defaultTitle={existingLab?.title ?? lesson.title + ' — Lab'}
+          defaultBrief={existingLab?.brief_md ?? ''}
+          defaultItems={rubricItems}
+          canDraft={hasTranscript}
+          existingLab={Boolean(existingLab)}
+        />
       </section>
     </div>
   )

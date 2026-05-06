@@ -1,14 +1,13 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { Users, LayoutDashboard, Building2, BookOpen, UsersRound, FlaskConical } from 'lucide-react'
+import { Users, LayoutDashboard, Building2, BookOpen, UsersRound } from 'lucide-react'
 
 const NAV = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/companies', label: 'Companies', icon: Building2 },
   { href: '/admin/courses', label: 'Courses', icon: BookOpen },
   { href: '/admin/cohorts', label: 'Cohorts', icon: UsersRound },
-  { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
