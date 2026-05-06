@@ -108,11 +108,12 @@ export async function createUserAction(
   const password = (formData.get('password') as string | null) ?? ''
   const fullName = (formData.get('full_name') as string | null)?.trim() || null
   const role = (formData.get('role') as string) || 'learner'
+  const orgId = (formData.get('org_id') as string | null) || null
 
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!email || !EMAIL_RE.test(email)) return { error: 'Valid email is required.' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
-  if (!['learner', 'instructor', 'admin'].includes(role)) return { error: 'Invalid role.' }
+  if (!['learner', 'instructor', 'admin', 'company_owner'].includes(role)) return { error: 'Invalid role.' }
 
   const admin = createAdminClient()
 
@@ -126,7 +127,7 @@ export async function createUserAction(
 
   await admin
     .from('profiles')
-    .update({ full_name: fullName, role, updated_at: new Date().toISOString() })
+    .update({ full_name: fullName, role, org_id: orgId, updated_at: new Date().toISOString() })
     .eq('id', authData.user.id)
 
   revalidatePath('/admin/users')

@@ -32,9 +32,11 @@ interface Props {
   cohort?: Cohort
   courses: Course[]
   companies: Company[]
+  defaultCompanyId?: string
+  redirectTo?: string
 }
 
-export function CohortForm({ cohort, courses, companies }: Props) {
+export function CohortForm({ cohort, courses, companies, defaultCompanyId, redirectTo }: Props) {
   const isEdit = !!cohort
   const action = isEdit ? updateCohortAction : createCohortAction
   const [state, formAction, isPending] = useActionState(action, initialState)
@@ -42,9 +44,9 @@ export function CohortForm({ cohort, courses, companies }: Props) {
 
   useEffect(() => {
     if (state.success && !isEdit && state.id) {
-      router.push(`/admin/cohorts/${state.id}`)
+      router.push(redirectTo ?? `/admin/cohorts/${state.id}`)
     }
-  }, [state.success, state.id, isEdit, router])
+  }, [state.success, state.id, isEdit, router, redirectTo])
 
   return (
     <form action={formAction} className="space-y-4">
@@ -77,7 +79,7 @@ export function CohortForm({ cohort, courses, companies }: Props) {
           <label className="text-[13px] font-medium" htmlFor="company_id">Company</label>
           <select
             id="company_id" name="company_id"
-            defaultValue={cohort?.company_id ?? ''}
+            defaultValue={cohort?.company_id ?? defaultCompanyId ?? ''}
             className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
           >
             <option value="">No company</option>
