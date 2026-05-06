@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { streamText } from 'ai'
-import { createAnthropic } from '@ai-sdk/anthropic'
+import { getAIModel } from '@/lib/ai/model'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -209,16 +209,18 @@ ${transcriptSection}`
       content: m.content,
     }))
 
-  // Initialize Anthropic provider (model per CLAUDE.md: claude-sonnet-4-6).
-  // T-6-04 (known gap): No rate limiting in v1 demo. Anthropic API key per-minute
-  // token limits act as a backstop. Add rate limiting in production hardening phase.
-  const anthropic = createAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
-  })
+  // Model resolution lives in lib/ai/model.ts — picks Anthropic or OpenRouter
+  // based on AI_PROVIDER env var. T-6-04 (known gap): No rate limiting in v1
+  // demo. Provider per-key TPM limits act as a backstop. Add rate limiting in
+  // production hardening phase.
 
   // Stream response. onFinish persists the assistant message.
+  // maxTokens caps output so OpenRouter pre-flight credit checks don't reject
+  // requests when the account balance is low. Tutor answers rarely exceed
+  // ~600 tokens; 1500 leaves headroom for code blocks.
   const result = await streamText({
-    model: anthropic('claude-sonnet-4-6'),
+    model: getAIModel(),
+    maxTokens: 1500,
     system: systemPrompt,
     messages: [
       ...priorMessages,
