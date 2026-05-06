@@ -160,55 +160,93 @@ export default async function LessonPage({ params }: LessonPageProps) {
   const moduleTitle = lesson.modules?.title ?? 'Module'
   const courseTitle = lesson.modules?.courses?.title ?? null
 
-  // Fetch lab for this lesson + learner's latest submission
+  // Fetch lab for this lesson + learner's latest submission.
+  // Schema A: labs(brief_md) + lab_rubric_items + lab_submissions(github_url,
+  // overall_stars, ...) + lab_submission_scores. See migration
+  // 20260504000002_create_labs.sql.
+  type LabRubricItemRow = {
+    id: string; position: number; criterion: string; description: string; weight: number
+  }
   type LabRow = {
-    id: string; title: string; description: string | null; passing_score: number
-    lab_criteria: Array<{ id: string; name: string; description: string | null; weight: number; position: number }>
+    id: string; title: string; brief_md: string
+    lab_rubric_items: LabRubricItemRow[]
   }
   type SubmissionRow = {
-    id: string; status: 'pending' | 'evaluating' | 'evaluated'
-    submission_text: string | null; submission_url: string | null; submitted_at: string
-    lab_evaluations: Array<{ criteria_id: string; score: number; feedback: string; suggestion: string | null }>
+    id: string
+    status: 'pending' | 'evaluating' | 'scored' | 'failed'
+    github_url: string
+    overall_stars: number | null
+    total_score: number
+    max_score: number
+    summary_md: string | null
+    error_message: string | null
+    submitted_at: string
+    scored_at: string | null
+    lab_submission_scores: Array<{ rubric_item_id: string; stars: number; feedback_md: string }>
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const labResult = await (admin as any)
     .from('labs')
-    .select('id, title, description, passing_score, lab_criteria(id, name, description, weight, position)')
+    .select('id, title, brief_md, lab_rubric_items(id, position, criterion, description, weight)')
     .eq('lesson_id', lessonId)
     .maybeSingle()
 
-  const lab = (labResult.data as LabRow | null) ?? null
+  const labRow = (labResult.data as LabRow | null) ?? null
+  // Reshape to LabSection's LabData type: rubric_items sorted by position.
+  const lab = labRow
+    ? {
+        id: labRow.id,
+        title: labRow.title,
+        brief_md: labRow.brief_md,
+        rubric_items: [...(labRow.lab_rubric_items ?? [])].sort(
+          (a, b) => a.position - b.position,
+        ),
+      }
+    : null
 
-  let latestSubmission: SubmissionRow | null = null
-  let activeCohortId: string | null = null
+  let latestSubmission: {
+    id: string
+    status: 'pending' | 'evaluating' | 'scored' | 'failed'
+    github_url: string
+    overall_stars: number | null
+    total_score: number
+    max_score: number
+    summary_md: string | null
+    error_message: string | null
+    submitted_at: string
+    scored_at: string | null
+    scores: Array<{ rubric_item_id: string; stars: number; feedback_md: string }>
+  } | null = null
   if (lab) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [subResult, enrollResult] = await Promise.all([
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (admin as any)
-        .from('lab_submissions')
-        .select('id, status, submission_text, submission_url, submitted_at, lab_evaluations(criteria_id, score, feedback, suggestion)')
-        .eq('lab_id', lab.id)
-        .eq('user_id', user.id)
-        .order('submitted_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      courseId
-        ? supabase
-            .from('enrollments')
-            .select('cohort_id, cohorts!inner(course_id)')
-            .eq('user_id', user.id)
-            .eq('status', 'active')
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .eq('cohorts.course_id' as any, courseId)
-            .limit(1)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ])
-    latestSubmission = (subResult.data as SubmissionRow | null) ?? null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    activeCohortId = (enrollResult.data as any)?.cohort_id ?? null
+    const subResult = await (admin as any)
+      .from('lab_submissions')
+      .select(
+        'id, status, github_url, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',
+      )
+      .eq('lab_id', lab.id)
+      .eq('user_id', user.id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const subRow = (subResult.data as SubmissionRow | null) ?? null
+    if (subRow) {
+      latestSubmission = {
+        id: subRow.id,
+        status: subRow.status,
+        github_url: subRow.github_url,
+        overall_stars: subRow.overall_stars,
+        total_score: subRow.total_score,
+        max_score: subRow.max_score,
+        summary_md: subRow.summary_md,
+        error_message: subRow.error_message,
+        submitted_at: subRow.submitted_at,
+        scored_at: subRow.scored_at,
+        scores: subRow.lab_submission_scores ?? [],
+      }
+    }
   }
 
   // Phase 2: ALL modules + ALL lessons of the parent course (for unified curriculum)
@@ -273,7 +311,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
         curriculum={curriculum}
         lab={lab}
         latestSubmission={latestSubmission}
-        cohortId={activeCohortId}
       />
       <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
     </>
