@@ -231,7 +231,10 @@ export async function enrollUserAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('enrollments')
-    .upsert({ cohort_id: cohortId, user_id: userId, status: 'active' })
+    .upsert(
+      { cohort_id: cohortId, user_id: userId, status: 'active' },
+      { onConflict: 'user_id,cohort_id' },
+    )
 
   if (error) return { error: error.message }
   revalidatePath(`/admin/cohorts/${cohortId}`)
@@ -269,7 +272,10 @@ export async function bulkEnrollAction(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (admin as any)
       .from('enrollments')
-      .upsert({ cohort_id: cohortId, user_id: profile.id, status: 'active' })
+      .upsert(
+        { cohort_id: cohortId, user_id: profile.id, status: 'active' },
+        { onConflict: 'user_id,cohort_id' },
+      )
 
     if (error) {
       if (error.code === '23505') { skipped++; continue }
