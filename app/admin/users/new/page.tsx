@@ -1,8 +1,17 @@
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { NewUserForm } from '@/components/admin/NewUserForm'
+import { createAdminClient } from '@/lib/supabase/admin'
 
-export default function NewUserPage() {
+export default async function NewUserPage() {
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: companies } = await (admin as any)
+    .from('organizations')
+    .select('id, name')
+    .is('deleted_at', null)
+    .order('name')
+
   return (
     <div className="max-w-md space-y-6">
       <div>
@@ -14,7 +23,7 @@ export default function NewUserPage() {
         </Link>
         <h1 className="mt-3 text-2xl font-bold">New user</h1>
       </div>
-      <NewUserForm />
+      <NewUserForm companies={companies ?? []} />
     </div>
   )
 }

@@ -75,10 +75,12 @@ export async function adminUpdateUserAction(
   const fullName = (formData.get('full_name') as string | null)?.trim() ?? null
   const role = formData.get('role') as string
   const isActive = formData.get('is_active') === 'true'
+  const orgId = (formData.get('org_id') as string | null) || null
 
   if (!userId) return { error: 'User ID is required.' }
-  if (!['learner', 'instructor', 'admin'].includes(role)) return { error: 'Invalid role.' }
+  if (!['learner', 'instructor', 'admin', 'company_owner'].includes(role)) return { error: 'Invalid role.' }
   if (fullName && fullName.length > 100) return { error: 'Name cannot exceed 100 characters.' }
+  if (role === 'company_owner' && !orgId) return { error: 'A company is required for the Company Owner role.' }
 
   const admin = createAdminClient()
   const { error } = await admin
@@ -87,6 +89,7 @@ export async function adminUpdateUserAction(
       full_name: fullName || null,
       role,
       is_active: isActive,
+      org_id: role === 'company_owner' ? orgId : null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)

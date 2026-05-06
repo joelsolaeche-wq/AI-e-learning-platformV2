@@ -12,24 +12,33 @@ type UserData = {
   full_name: string | null
   role: string
   is_active: boolean
+  org_id: string | null
 }
 
-const ROLES = ['learner', 'instructor', 'admin'] as const
-const ROLE_LABELS: Record<string, string> = { learner: 'Learner', instructor: 'Instructor', admin: 'Admin' }
+type Company = { id: string; name: string }
+
+const ROLES = [
+  { value: 'learner', label: 'Learner' },
+  { value: 'instructor', label: 'Instructor' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'company_owner', label: 'Company Owner' },
+] as const
 
 const initialState = { error: null }
 
-export function AdminUserForm({ user }: { user: UserData }) {
+export function AdminUserForm({ user, companies = [] }: { user: UserData; companies?: Company[] }) {
   const [state, formAction, isPending] = useActionState(adminUpdateUserAction, initialState)
   const [fullName, setFullName] = useState(user.full_name ?? '')
   const [role, setRole] = useState(user.role)
   const [isActive, setIsActive] = useState(user.is_active)
+  const [orgId, setOrgId] = useState(user.org_id ?? '')
 
   return (
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="user_id" value={user.id} />
       <input type="hidden" name="role" value={role} />
       <input type="hidden" name="is_active" value={String(isActive)} />
+      <input type="hidden" name="org_id" value={orgId} />
 
       {state?.error && (
         <div role="alert" className="rounded-md bg-destructive/15 px-3 py-2 text-sm text-destructive">
@@ -68,25 +77,47 @@ export function AdminUserForm({ user }: { user: UserData }) {
       </div>
 
       <div className="space-y-2">
-        <Label>Rol</Label>
-        <div className="flex gap-2">
-          {ROLES.map((r) => (
+        <Label>Role</Label>
+        <div className="flex flex-wrap gap-2">
+          {ROLES.map(({ value, label }) => (
             <button
-              key={r}
+              key={value}
               type="button"
-              onClick={() => setRole(r)}
+              onClick={() => {
+                setRole(value)
+                if (value !== 'company_owner') setOrgId('')
+              }}
               className={cn(
                 'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-                role === r
+                role === value
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border text-muted-foreground hover:text-foreground',
               )}
             >
-              {ROLE_LABELS[r]}
+              {label}
             </button>
           ))}
         </div>
       </div>
+
+      {role === 'company_owner' && (
+        <div className="space-y-2">
+          <Label htmlFor="adm-org">Company</Label>
+          {companies.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No companies available.</p>
+          ) : (
+            <select
+              id="adm-org"
+              value={orgId}
+              onChange={(e) => setOrgId(e.target.value)}
+              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+            >
+              <option value="">Select company…</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label>Account status</Label>
