@@ -36,11 +36,11 @@ interface Props {
   companies: Company[]
   defaultCompanyId?: string
   lockCompany?: boolean
-  redirectTo?: string
+  redirectBase?: string
   selectedCourseIds?: string[]
 }
 
-export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockCompany, redirectTo, selectedCourseIds }: Props) {
+export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockCompany, redirectBase, selectedCourseIds }: Props) {
   const isEdit = !!cohort
 
   // Initialise selection: for edit mode use selectedCourseIds from DB (M2M);
@@ -59,9 +59,9 @@ export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockC
 
   useEffect(() => {
     if (state.success && !isEdit && state.id) {
-      router.push(redirectTo ?? `/admin/cohorts/${state.id}`)
+      router.push(`${redirectBase ?? '/admin/cohorts'}/${state.id}?tab=members`)
     }
-  }, [state.success, state.id, isEdit, router, redirectTo])
+  }, [state.success, state.id, isEdit, router, redirectBase])
 
   function toggleCourse(id: string) {
     setPickedCourses((prev) =>

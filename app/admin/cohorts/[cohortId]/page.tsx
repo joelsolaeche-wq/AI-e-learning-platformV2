@@ -6,9 +6,17 @@ import { CohortForm } from '@/components/admin/CohortForm'
 import { CohortEnrollmentPanel } from '@/components/admin/CohortEnrollmentPanel'
 import { CohortInvitationPanel } from '@/components/admin/CohortInvitationPanel'
 import { CohortActionsBar } from '@/components/admin/CohortActionsBar'
+import { CohortTabs } from '@/components/admin/CohortTabs'
 
-export default async function EditCohortPage({ params }: { params: Promise<{ cohortId: string }> }) {
+export default async function EditCohortPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ cohortId: string }>
+  searchParams: Promise<{ tab?: string }>
+}) {
   const { cohortId } = await params
+  const { tab } = await searchParams
   const admin = createAdminClient()
 
   const [cohortRes, coursesRes, companiesRes, cohortCoursesRes, enrollmentsRes, invitationsRes] = await Promise.all([
@@ -40,6 +48,8 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
     (r: { course_id: string }) => r.course_id,
   )
 
+  const enrollments = enrollmentsRes.data ?? []
+
   return (
     <div className="max-w-2xl space-y-8">
       <div className="flex items-start justify-between">
@@ -55,27 +65,33 @@ export default async function EditCohortPage({ params }: { params: Promise<{ coh
         <CohortActionsBar cohortId={cohortId} status={cohortRes.data.status} />
       </div>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Details</h2>
-        <CohortForm
-          cohort={cohortRes.data}
-          courses={coursesRes.data ?? []}
-          companies={companiesRes.data ?? []}
-          selectedCourseIds={selectedCourseIds}
-        />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-          Enrollments ({(enrollmentsRes.data ?? []).length})
-        </h2>
-        <CohortEnrollmentPanel cohortId={cohortId} enrollments={enrollmentsRes.data ?? []} />
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Invitation codes</h2>
-        <CohortInvitationPanel cohortId={cohortId} invitations={invitationsRes.data ?? []} />
-      </section>
+      <CohortTabs
+        defaultTab={tab ?? 'details'}
+        tabs={[
+          {
+            id: 'details',
+            label: 'Details',
+            content: (
+              <CohortForm
+                cohort={cohortRes.data}
+                courses={coursesRes.data ?? []}
+                companies={companiesRes.data ?? []}
+                selectedCourseIds={selectedCourseIds}
+              />
+            ),
+          },
+          {
+            id: 'members',
+            label: `Members (${enrollments.length})`,
+            content: <CohortEnrollmentPanel cohortId={cohortId} enrollments={enrollments} />,
+          },
+          {
+            id: 'invitations',
+            label: 'Invitation codes',
+            content: <CohortInvitationPanel cohortId={cohortId} invitations={invitationsRes.data ?? []} />,
+          },
+        ]}
+      />
     </div>
   )
 }
