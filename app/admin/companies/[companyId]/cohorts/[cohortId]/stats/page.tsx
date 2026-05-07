@@ -237,7 +237,7 @@ export default async function CohortStatsPage({
         <div>
           <h1 className="text-xl font-semibold">{cohort.title} — Stats</h1>
           <p className="text-xs text-muted-foreground">
-            {learners.length} learner{learners.length !== 1 ? 's' : ''} · {statsData.courses.length} course{statsData.courses.length !== 1 ? 's' : ''}
+            {learners.length} learner{learners.length !== 1 ? 's' : ''} · {statsData.courses.length} course{statsData.courses.length !== 1 ? 's' : ''} · starts {new Date(cohort.starts_at).toLocaleDateString()}
           </p>
         </div>
       </div>
