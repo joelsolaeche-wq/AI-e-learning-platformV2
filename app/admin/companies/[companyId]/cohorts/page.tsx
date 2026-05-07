@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
-import { Plus, UsersRound } from 'lucide-react'
+import { Plus, UsersRound, BarChart3 } from 'lucide-react'
 
 type CohortRow = {
   id: string
@@ -88,12 +88,22 @@ export default async function CompanyCohortListPage({
                     {cohort.max_seats === 0 ? '∞' : cohort.max_seats}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`cohorts/${cohort.id}`}
-                      className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
-                    >
-                      Edit
-                    </Link>
+                    <div className="inline-flex items-center gap-1">
+                      <Link
+                        href={`cohorts/${cohort.id}/stats`}
+                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+                        title="View cohort stats"
+                      >
+                        <BarChart3 size={13} />
+                        Stats
+                      </Link>
+                      <Link
+                        href={`cohorts/${cohort.id}`}
+                        className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-white/5 hover:text-foreground transition-colors"
+                      >
+                        Edit
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
