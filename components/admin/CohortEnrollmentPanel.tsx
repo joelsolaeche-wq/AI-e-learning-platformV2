@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { UserPlus, Upload, X } from 'lucide-react'
-import { enrollUserAction, bulkEnrollAction } from '@/lib/actions/cohorts.actions'
+import { UserPlus, Upload, X, UserMinus } from 'lucide-react'
+import { enrollUserAction, bulkEnrollAction, unenrollUserAction } from '@/lib/actions/cohorts.actions'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 type Enrollment = {
   id: string
@@ -40,12 +41,26 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
 
   async function handleManualEnroll(userId: string) {
     setManualError(null)
+    const userName = userResults.find(u => u.id === userId)?.full_name
+      ?? userResults.find(u => u.id === userId)?.email
+      ?? 'User'
     startTransition(async () => {
       const result = await enrollUserAction(cohortId, userId)
       if (result.error) { setManualError(result.error); return }
       setManualEmail('')
       setUserResults([])
       setShowManual(false)
+      toast.success(`${userName} enrolled successfully`)
+      router.refresh()
+    })
+  }
+
+  async function handleUnenroll(enrollmentId: string, name: string) {
+    if (!confirm(`Remove ${name} from this cohort?`)) return
+    startTransition(async () => {
+      const result = await unenrollUserAction(enrollmentId, cohortId)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(`${name} removed from cohort`)
       router.refresh()
     })
   }
@@ -161,6 +176,7 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">User</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Status</th>
                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Enrolled</th>
+                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -177,6 +193,16 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {new Date(e.enrolled_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleUnenroll(e.id, e.profiles?.full_name ?? e.profiles?.email ?? 'User')}
+                      disabled={isPending}
+                      title="Remove from cohort"
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-40 transition-colors"
+                    >
+                      <UserMinus size={12} /> Remove
+                    </button>
                   </td>
                 </tr>
               ))}

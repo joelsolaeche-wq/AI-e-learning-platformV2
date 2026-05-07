@@ -49,10 +49,24 @@ export async function signInAction(_prevState: AuthActionResult, formData: FormD
 
   const supabase = await createClient()
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password })
 
   if (error) {
     return { error: error.message }
+  }
+
+  // company_owner goes directly to their company workspace
+  if (signInData.user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, org_id')
+      .eq('id', signInData.user.id)
+      .maybeSingle()
+
+    if (profile?.role === 'company_owner' && profile?.org_id) {
+      revalidatePath('/', 'layout')
+      redirect(`/admin/companies/${profile.org_id}`)
+    }
   }
 
   revalidatePath('/', 'layout')

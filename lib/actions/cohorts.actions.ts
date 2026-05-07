@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
 
-export type CohortActionResult = { error: string | null; success?: boolean; id?: string }
+export type CohortActionResult = { error: string | null; success?: boolean; id?: string; cohortTitle?: string }
 
 async function assertAdminOrInstructor() {
   const supabase = await createClient()
@@ -129,6 +129,29 @@ export async function updateCohortAction(
   return { error: null, success: true }
 }
 
+export async function deleteCohortAction(cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (existing?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any).from('cohorts').delete().eq('id', cohortId)
+  if (error) return { error: error.message }
+
+  revalidatePath('/admin/cohorts')
+  return { error: null, success: true }
+}
+
 export async function archiveCohortAction(cohortId: string): Promise<CohortActionResult> {
   const caller = await assertAdminOrInstructor()
   if (!caller) return { error: 'Unauthorized.' }
@@ -184,6 +207,19 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
   return { error: null, success: true, id: data.id }
 }
 
+export async function unenrollUserAction(enrollmentId: string, cohortId: string): Promise<CohortActionResult> {
+  const caller = await assertAdminOrInstructor()
+  if (!caller) return { error: 'Unauthorized.' }
+
+  const admin = createAdminClient()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (admin as any).from('enrollments').delete().eq('id', enrollmentId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/admin/cohorts/${cohortId}`)
+  return { error: null, success: true }
+}
+
 export async function enrollUserAction(
   cohortId: string,
   userId: string,
@@ -195,7 +231,10 @@ export async function enrollUserAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('enrollments')
-    .upsert({ cohort_id: cohortId, user_id: userId, status: 'active' })
+    .upsert(
+      { cohort_id: cohortId, user_id: userId, status: 'active' },
+      { onConflict: 'user_id,cohort_id' },
+    )
 
   if (error) return { error: error.message }
   revalidatePath(`/admin/cohorts/${cohortId}`)
@@ -233,7 +272,10 @@ export async function bulkEnrollAction(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (admin as any)
       .from('enrollments')
-      .upsert({ cohort_id: cohortId, user_id: profile.id, status: 'active' })
+      .upsert(
+        { cohort_id: cohortId, user_id: profile.id, status: 'active' },
+        { onConflict: 'user_id,cohort_id' },
+      )
 
     if (error) {
       if (error.code === '23505') { skipped++; continue }
@@ -323,9 +365,17 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
     .update({ uses_count: invitation.uses_count + 1 })
     .eq('id', invitation.id)
 
+  // Fetch cohort title for toast feedback
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: cohort } = await (admin as any)
+    .from('cohorts')
+    .select('title')
+    .eq('id', invitation.cohort_id)
+    .single()
+
   revalidatePath('/catalog')
   revalidatePath('/dashboard')
-  return { error: null, success: true, id: invitation.cohort_id }
+  return { error: null, success: true, id: invitation.cohort_id, cohortTitle: cohort?.title as string | undefined }
 }
 
 // Form-compatible version for useActionState (used by JoinByCodeForm)

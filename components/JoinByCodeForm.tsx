@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { joinByCodeFormAction } from '@/lib/actions/cohorts.actions'
 import { KeyRound } from 'lucide-react'
+import { toast } from 'sonner'
 
-type State = { error: string | null; success?: boolean }
+type State = { error: string | null; success?: boolean; cohortTitle?: string }
 const initialState: State = { error: null }
 
 export function JoinByCodeForm() {
@@ -16,10 +17,11 @@ export function JoinByCodeForm() {
 
   useEffect(() => {
     if (state.success) {
+      toast.success(state.cohortTitle ? `Joined "${state.cohortTitle}"` : 'You joined a new cohort!')
       router.refresh()
       setOpen(false)
     }
-  }, [state.success, router])
+  }, [state.success, state.cohortTitle, router])
 
   if (!open) {
     return (

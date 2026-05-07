@@ -71,7 +71,7 @@ export function Sidebar({ user, streakDays = 7, lastLessonHref }: SidebarProps) 
       activePrefix: '/dashboard/lesson',
     },
     { href: '/dashboard/achievements', label: 'Achievements', icon: Trophy },
-    { href: '/dashboard/team', label: 'Team', icon: Users },
+    { href: '/dashboard/team', label: 'My Cohort', icon: Users },
   ]
 
   return (
