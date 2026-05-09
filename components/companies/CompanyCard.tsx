@@ -9,6 +9,7 @@
 
 import Link from 'next/link'
 import { Building2, Users, GraduationCap, ChevronRight } from 'lucide-react'
+import { Ring } from '@/components/ui/Ring'
 
 const HUES: Array<{ from: string; to: string }> = [
   { from: '#7C3AED', to: '#22D3EE' },
@@ -39,11 +40,17 @@ export interface CompanyCardProps {
   cohortCount: number
   /** Optional learner count badge — omit when not visible (RLS) or not relevant. */
   learnerCount?: number | null
+  /** Aggregate progress across all of the learner's cohorts in this company. */
+  progress?: { completed: number; total: number } | null
   href: string
 }
 
-export function CompanyCard({ company, cohortCount, learnerCount, href }: CompanyCardProps) {
+export function CompanyCard({ company, cohortCount, learnerCount, progress, href }: CompanyCardProps) {
   const hue = hueFor(company.id)
+  const pct =
+    progress && progress.total > 0
+      ? Math.floor((progress.completed / progress.total) * 100)
+      : null
   return (
     <Link
       href={href}
@@ -77,7 +84,7 @@ export function CompanyCard({ company, cohortCount, learnerCount, href }: Compan
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 text-[14.5px] font-bold tracking-tight">
@@ -88,17 +95,32 @@ export function CompanyCard({ company, cohortCount, learnerCount, href }: Compan
           <ChevronRight size={14} className="shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
         </div>
 
-        <div className="flex items-center gap-4 text-[12px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <GraduationCap size={13} />
-            {cohortCount} cohort{cohortCount === 1 ? '' : 's'}
-          </span>
-          {typeof learnerCount === 'number' && (
-            <span className="inline-flex items-center gap-1.5">
-              <Users size={13} />
-              {learnerCount} learner{learnerCount === 1 ? '' : 's'}
-            </span>
+        <div className="flex items-center gap-3">
+          {pct !== null && (
+            <Ring pct={pct} size={44} stroke={4}>
+              <span className="text-[10px] font-bold">{pct}%</span>
+            </Ring>
           )}
+          <div className="flex flex-1 flex-col gap-1 text-[12px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <GraduationCap size={13} />
+              {cohortCount} cohort{cohortCount === 1 ? '' : 's'}
+              {typeof learnerCount === 'number' && (
+                <>
+                  <span className="text-muted-foreground/40">·</span>
+                  <Users size={13} />
+                  {learnerCount} learner{learnerCount === 1 ? '' : 's'}
+                </>
+              )}
+            </span>
+            {progress && progress.total > 0 ? (
+              <span className="text-[11.5px] font-medium text-foreground/80">
+                {progress.completed} / {progress.total} lessons complete
+              </span>
+            ) : progress && progress.total === 0 ? (
+              <span className="text-[11.5px]">No lessons yet</span>
+            ) : null}
+          </div>
         </div>
       </div>
     </Link>

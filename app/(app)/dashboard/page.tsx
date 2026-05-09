@@ -452,6 +452,9 @@ export default async function DashboardPage() {
               name: string
               logo_url: string | null
               cohortCount: number
+              lessonsCompleted: number
+              lessonsTotal: number
+              courseIdsSeen: Set<string>
             }>()
             for (const e of enrollments) {
               const cohort = e.cohorts
@@ -470,14 +473,34 @@ export default async function DashboardPage() {
                   name: org?.name ?? 'Your company',
                   logo_url: org?.logo_url ?? null,
                   cohortCount: 1,
+                  lessonsCompleted: 0,
+                  lessonsTotal: 0,
+                  courseIdsSeen: new Set<string>(),
                 })
+              }
+              // Roll up lessons across each unique course this company runs
+              // (multiple cohorts may share the same course; don't double-count).
+              const company = byCompany.get(id)!
+              const courseId = cohort.course_id
+              if (courseId && !company.courseIdsSeen.has(courseId)) {
+                company.courseIdsSeen.add(courseId)
+                const lessons = lessonsByCourse.get(courseId) ?? []
+                company.lessonsTotal += lessons.length
+                company.lessonsCompleted += lessons.filter((l) =>
+                  completedLessonIds.has(l.id),
+                ).length
               }
             }
             const companies = Array.from(byCompany.values())
             return (
               <section className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-[18px] font-bold tracking-tight">Your companies</h2>
+                  <div>
+                    <h2 className="text-[18px] font-bold tracking-tight">Your companies</h2>
+                    <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                      Click a company to see your cohorts and the courses inside.
+                    </p>
+                  </div>
                   <div className="flex items-center gap-3">
                     <JoinByCodeForm />
                     <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
@@ -492,6 +515,7 @@ export default async function DashboardPage() {
                       key={c.id}
                       company={{ id: c.id, name: c.name, logo_url: c.logo_url }}
                       cohortCount={c.cohortCount}
+                      progress={{ completed: c.lessonsCompleted, total: c.lessonsTotal }}
                       href={`/dashboard/company/${c.id}`}
                     />
                   ))}

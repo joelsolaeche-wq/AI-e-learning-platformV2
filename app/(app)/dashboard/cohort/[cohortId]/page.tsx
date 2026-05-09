@@ -9,9 +9,10 @@ import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
-  ChevronLeft, ChevronRight, BookOpen, Calendar, Users, Play, GraduationCap,
+  ChevronRight, BookOpen, Calendar, Users, Play, GraduationCap, Clock, Sparkles,
 } from 'lucide-react'
 import { Ring } from '@/components/ui/Ring'
+import { Breadcrumbs } from '@/components/ui/Breadcrumbs'
 
 function formatDateRange(starts_at: string, ends_at: string | null): string {
   const s = new Date(starts_at)
@@ -20,6 +21,16 @@ function formatDateRange(starts_at: string, ends_at: string | null): string {
   const e = new Date(ends_at)
   const eFmt = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   return `${sFmt} → ${eFmt}`
+}
+
+function formatDurationApprox(totalSeconds: number): string {
+  if (!totalSeconds || totalSeconds <= 0) return ''
+  const totalMinutes = Math.round(totalSeconds / 60)
+  if (totalMinutes < 60) return `${totalMinutes} min`
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (m === 0) return `${h} hr`
+  return `${h}h ${m}m`
 }
 
 export default async function DashboardCohortPage({
@@ -103,7 +114,13 @@ export default async function DashboardCohortPage({
   // 4. For each course, fetch lessons + the user's progress so we can render
   //    "X / Y lessons" on the card and link to the next incomplete lesson.
   type ModuleRow = { id: string; course_id: string; position: number }
-  type LessonRow = { id: string; module_id: string; title: string; position: number }
+  type LessonRow = {
+    id: string
+    module_id: string
+    title: string
+    position: number
+    duration_seconds: number | null
+  }
   const modulesByCourse = new Map<string, ModuleRow[]>()
   const lessonsByCourse = new Map<string, LessonRow[]>()
 
@@ -123,7 +140,7 @@ export default async function DashboardCohortPage({
     if (moduleIds.length > 0) {
       const { data: lessonRows } = await supabase
         .from('lessons')
-        .select('id, module_id, title, position')
+        .select('id, module_id, title, position, duration_seconds')
         .in('module_id', moduleIds)
         .order('position')
       const moduleToCourse = new Map<string, string>()
@@ -166,8 +183,6 @@ export default async function DashboardCohortPage({
         .maybeSingle()
     : { data: null }
   const company = orgRow as { id: string; name: string } | null
-  const backHref = company ? `/dashboard/company/${company.id}` : '/dashboard'
-  const backLabel = company?.name ?? 'Your companies'
 
   // Build the per-course render data.
   const courses = courseIdList
@@ -178,70 +193,122 @@ export default async function DashboardCohortPage({
       const total = lessons.length
       const completed = lessons.filter((l) => completedLessonIds.has(l.id)).length
       const pct = total > 0 ? Math.floor((completed / total) * 100) : 0
+      const totalDurationSec = lessons.reduce(
+        (acc, l) => acc + (l.duration_seconds ?? 0),
+        0,
+      )
       const nextLesson = lessons.find((l) => !completedLessonIds.has(l.id)) ?? lessons[0]
       const href = nextLesson ? `/dashboard/lesson/${nextLesson.id}` : null
-      return { course, total, completed, pct, href }
+      return {
+        course,
+        total,
+        completed,
+        pct,
+        href,
+        nextLessonTitle: nextLesson?.title ?? null,
+        durationLabel: formatDurationApprox(totalDurationSec),
+      }
     })
+
+  // Aggregate cohort-wide progress (across all courses).
+  const cohortAggCompleted = courses.reduce((acc, c) => acc + c.completed, 0)
+  const cohortAggTotal = courses.reduce((acc, c) => acc + c.total, 0)
+  const cohortPct = cohortAggTotal > 0
+    ? Math.floor((cohortAggCompleted / cohortAggTotal) * 100)
+    : 0
+  const firstResumable = courses.find((c) => c.href && c.completed < c.total) ?? courses.find((c) => c.href)
 
   return (
     <main className="mx-auto flex w-full max-w-[1280px] flex-col gap-6">
-      {/* Back link + cohort header */}
-      <div className="flex flex-col gap-3">
-        <Link
-          href={backHref}
-          className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors w-fit"
-        >
-          <ChevronLeft size={14} /> {backLabel}
-        </Link>
+      <Breadcrumbs
+        items={[
+          { label: 'Your companies', href: '/dashboard' },
+          ...(company
+            ? [{ label: company.name, href: `/dashboard/company/${company.id}` }]
+            : []),
+          { label: cohort.title },
+        ]}
+      />
 
-        <section className="relative overflow-hidden rounded-[22px] border border-border bg-[radial-gradient(700px_320px_at_15%_0%,rgba(139,92,246,0.22),transparent_60%),radial-gradient(500px_280px_at_92%_100%,rgba(34,211,238,0.18),transparent_60%),linear-gradient(180deg,#14142A,#0E0E1B)] px-10 py-8">
-          <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              {cohort.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={cohort.image_url}
-                  alt={cohort.title}
-                  className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/10"
-                />
-              ) : (
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary to-accent shadow-[0_0_24px_rgba(139,92,246,0.45)]">
-                  <GraduationCap size={26} className="text-white" />
-                </div>
-              )}
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">
-                  <GraduationCap size={12} /> Cohort
-                </div>
-                <h1 className="my-2 text-[30px] font-bold leading-[1.08] tracking-[-0.02em]">
-                  {cohort.title}
-                </h1>
-                <div className="flex flex-wrap items-center gap-3 text-[12.5px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Calendar size={13} />
-                    {formatDateRange(cohort.starts_at, cohort.ends_at)}
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Users size={13} />
-                    {memberCount} member{memberCount === 1 ? '' : 's'}
-                  </span>
-                </div>
+      {/* Cohort header — title, dates, members, aggregate progress, resume CTA */}
+      <section className="relative overflow-hidden rounded-[22px] border border-border bg-[radial-gradient(700px_320px_at_15%_0%,rgba(139,92,246,0.22),transparent_60%),radial-gradient(500px_280px_at_92%_100%,rgba(34,211,238,0.18),transparent_60%),linear-gradient(180deg,#14142A,#0E0E1B)] px-10 py-8">
+        <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            {cohort.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cohort.image_url}
+                alt={cohort.title}
+                className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/10"
+              />
+            ) : (
+              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-primary to-accent shadow-[0_0_24px_rgba(139,92,246,0.45)]">
+                <GraduationCap size={26} className="text-white" />
               </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
-              <div className="text-[10.5px] uppercase tracking-[0.07em] text-primary">Courses</div>
-              <div className="mt-1 font-mono text-[20px] font-bold tabular-nums">
-                {courses.length}
+            )}
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">
+                <GraduationCap size={12} /> Cohort
+              </div>
+              <h1 className="my-2 text-[30px] font-bold leading-[1.08] tracking-[-0.02em]">
+                {cohort.title}
+              </h1>
+              <div className="flex flex-wrap items-center gap-3 text-[12.5px] text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar size={13} />
+                  {formatDateRange(cohort.starts_at, cohort.ends_at)}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <Users size={13} />
+                  {memberCount} member{memberCount === 1 ? '' : 's'}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <BookOpen size={13} />
+                  {courses.length} course{courses.length === 1 ? '' : 's'}
+                </span>
               </div>
             </div>
           </div>
-        </section>
-      </div>
+
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3 backdrop-blur-md">
+              <Ring pct={cohortPct} size={52} stroke={5}>
+                <span className="text-[11px] font-bold">{cohortPct}%</span>
+              </Ring>
+              <div className="text-[12px]">
+                <div className="text-[10.5px] uppercase tracking-[0.07em] text-primary">
+                  Your progress
+                </div>
+                <div className="font-semibold">
+                  {cohortAggCompleted} / {cohortAggTotal} lessons
+                </div>
+              </div>
+            </div>
+            {firstResumable?.href && firstResumable.nextLessonTitle && (
+              <Link
+                href={firstResumable.href}
+                className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-5 py-2.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
+              >
+                <Play size={13} fill="currentColor" />
+                <span className="max-w-[200px] truncate">
+                  {firstResumable.completed > 0 ? 'Resume' : 'Start'}: {firstResumable.nextLessonTitle}
+                </span>
+              </Link>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Courses grid */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-[18px] font-bold tracking-tight">Courses in this cohort</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-[18px] font-bold tracking-tight">Courses in this cohort</h2>
+            <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+              Click any course to jump into the next lesson.
+            </p>
+          </div>
+        </div>
 
         {courses.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card py-12 text-center">
@@ -253,81 +320,118 @@ export default async function DashboardCohortPage({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {courses.map(({ course, total, completed, pct, href }) => (
-              <div
-                key={course.id}
-                className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
-              >
-                {/* Banner */}
-                <div className="relative grid aspect-[16/7] place-items-center overflow-hidden bg-gradient-to-br from-primary/30 via-accent/15 to-transparent">
-                  {course.thumbnail_url ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={course.thumbnail_url}
-                        alt={course.title}
-                        className="absolute inset-0 h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                    </>
-                  ) : (
-                    <BookOpen size={42} className="text-white/70 drop-shadow" />
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-                </div>
-
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div>
-                    <div className="text-[14.5px] font-bold tracking-tight leading-snug">
-                      {course.title}
-                    </div>
-                    {course.description && (
-                      <div className="mt-1 line-clamp-2 text-[12px] text-muted-foreground">
-                        {course.description}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <Ring pct={pct} size={48} stroke={4}>
-                      <span className="text-[10.5px] font-bold">{pct}%</span>
-                    </Ring>
-                    <div className="flex-1">
-                      <div className="text-[12.5px] font-semibold">
-                        {completed} / {total}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {total === 0 ? 'No lessons yet' : 'lessons complete'}
-                      </div>
-                    </div>
-                    {href ? (
-                      <Link
-                        href={href}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-3 text-[12.5px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
-                      >
-                        <Play size={11} fill="currentColor" />
-                        {completed > 0 && completed < total ? 'Resume' : 'Start'}
-                      </Link>
+            {courses.map(({ course, total, completed, pct, href, durationLabel, nextLessonTitle }) => {
+              const cardInner = (
+                <>
+                  {/* Banner */}
+                  <div className="relative grid aspect-[16/7] place-items-center overflow-hidden bg-gradient-to-br from-primary/30 via-accent/15 to-transparent">
+                    {course.thumbnail_url ? (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={course.thumbnail_url}
+                          alt={course.title}
+                          className="absolute inset-0 h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </>
                     ) : (
-                      <span className="inline-flex h-9 items-center rounded-[10px] border border-border bg-secondary/40 px-3 text-[12px] text-muted-foreground">
-                        Coming soon
+                      <BookOpen size={42} className="text-white/70 drop-shadow" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+
+                    {/* Lesson count + duration chips on the banner */}
+                    <div className="absolute bottom-2.5 left-2.5 flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10.5px] font-semibold text-white/95 backdrop-blur-sm">
+                        <BookOpen size={10} /> {total} lesson{total === 1 ? '' : 's'}
+                      </span>
+                      {durationLabel && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10.5px] font-semibold text-white/95 backdrop-blur-sm">
+                          <Clock size={10} /> {durationLabel}
+                        </span>
+                      )}
+                    </div>
+
+                    {pct === 100 && total > 0 && (
+                      <span className="absolute right-2.5 top-2.5 rounded-full border border-primary/60 bg-primary/85 px-2.5 py-0.5 text-[10.5px] font-bold text-primary-foreground backdrop-blur-md">
+                        Completed
                       </span>
                     )}
                   </div>
+
+                  <div className="flex flex-1 flex-col gap-3 p-4">
+                    <div>
+                      <div className="text-[14.5px] font-bold tracking-tight leading-snug">
+                        {course.title}
+                      </div>
+                      {course.description ? (
+                        <div className="mt-1 line-clamp-2 text-[12px] text-muted-foreground">
+                          {course.description}
+                        </div>
+                      ) : (
+                        nextLessonTitle && total > 0 && (
+                          <div className="mt-1 truncate text-[12px] text-muted-foreground">
+                            <span className="text-muted-foreground/70">Up next: </span>
+                            {nextLessonTitle}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <Ring pct={pct} size={48} stroke={4}>
+                        <span className="text-[10.5px] font-bold">{pct}%</span>
+                      </Ring>
+                      <div className="flex-1">
+                        <div className="text-[12.5px] font-semibold">
+                          {completed} / {total}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {total === 0 ? 'No lessons yet' : 'lessons complete'}
+                        </div>
+                      </div>
+                      {href ? (
+                        <span className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-3 text-[12.5px] font-semibold text-primary-foreground glow-primary transition-transform group-hover:-translate-y-0.5">
+                          <Play size={11} fill="currentColor" />
+                          {pct === 100 ? 'Review' : completed > 0 ? 'Resume' : 'Start'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex h-9 items-center rounded-[10px] border border-border bg-secondary/40 px-3 text-[12px] text-muted-foreground">
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )
+
+              const baseClasses =
+                'group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]'
+
+              return href ? (
+                <Link key={course.id} href={href} className={baseClasses} aria-label={`Open ${course.title}`}>
+                  {cardInner}
+                </Link>
+              ) : (
+                <div key={course.id} className={baseClasses}>
+                  {cardInner}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
-        {/* Quick links to cohort detail */}
-        <div className="mt-2 flex flex-wrap gap-2 text-[12.5px]">
+        <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link
             href="/dashboard/team"
-            className="inline-flex items-center gap-1.5 rounded-[10px] border border-border bg-card px-3 py-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-[10px] border border-border bg-card px-3 py-2 text-[12.5px] text-muted-foreground hover:bg-secondary hover:text-foreground"
           >
             <Users size={12} /> Cohort members
           </Link>
+          <span className="inline-flex items-center gap-1.5 rounded-[10px] border border-primary/20 bg-primary/[0.04] px-3 py-2 text-[12px] text-muted-foreground">
+            <Sparkles size={12} className="text-primary" />
+            Tip: open a course to start. Synapse helps you inside each lesson.
+          </span>
         </div>
       </section>
     </main>
