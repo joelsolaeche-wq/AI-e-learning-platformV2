@@ -96,14 +96,11 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Parallel: enrollments + own profile + learner stats (own only, by RLS)
+  // Phase 1: enrollments (basic columns only, no embeds) + own profile + stats.
   const [enrollmentsResult, ownProfileResult, stats] = await Promise.all([
     supabase
       .from('enrollments')
-      .select(`id, cohort_id, enrolled_at, status,
-               cohorts ( id, title, status, starts_at, ends_at, course_id, company_id, image_url,
-                 courses ( id, title, slug ),
-                 organizations ( id, name, logo_url ) )`)
+      .select('id, cohort_id, enrolled_at, status')
       .eq('user_id', user.id)
       .eq('status', 'active'),
     supabase
@@ -115,13 +112,134 @@ export default async function DashboardPage() {
   ])
 
   if (enrollmentsResult.error) {
-    // Surface PostgREST schema-cache or RLS issues that would otherwise
-    // silently empty the cohort grid.
-    console.error('[dashboard] enrollments query failed', enrollmentsResult.error)
+    const e = enrollmentsResult.error as {
+      message?: string; code?: string; details?: string; hint?: string
+    }
+    console.error('[dashboard] enrollments query failed:', {
+      message: e.message, code: e.code, details: e.details, hint: e.hint,
+    })
   }
-  const enrollments: EnrollmentWithCohort[] =
-    (enrollmentsResult.data as EnrollmentWithCohort[] | null) ?? []
+
+  type RawEnrollment = { id: string; cohort_id: string; enrolled_at: string; status: string }
+  const rawEnrollments = (enrollmentsResult.data ?? []) as RawEnrollment[]
   const ownProfile = ownProfileResult.data as PeerProfileRow | null
+
+  // Phase 1.5: fetch cohorts → courses → organizations explicitly. Avoids
+  // PostgREST schema-cache and embed-RLS edge cases that previously caused
+  // the cohort grid to silently empty when the new image_url column had
+  // not yet been picked up by the API layer.
+  type CohortRow = {
+    id: string
+    title: string
+    status: string
+    starts_at: string
+    ends_at: string | null
+    course_id: string
+    company_id: string | null
+    image_url: string | null
+  }
+  type CourseRow = { id: string; title: string; slug: string }
+  type OrgRow = { id: string; name: string; logo_url: string | null }
+
+  const cohortMap = new Map<string, CohortRow>()
+  const courseMap = new Map<string, CourseRow>()
+  const orgMap = new Map<string, OrgRow>()
+
+  const cohortIds = Array.from(new Set(rawEnrollments.map((e) => e.cohort_id)))
+  if (cohortIds.length > 0) {
+    // Try with the new image_url column first. If PostgREST's schema cache
+    // hasn't picked it up yet (just-applied migration on Supabase Cloud
+    // sometimes lags), fall back to the column set without it — better to
+    // render cards with a gradient fallback than an empty grid.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let cohortRes = await (supabase as any)
+      .from('cohorts')
+      .select('id, title, status, starts_at, ends_at, course_id, company_id, image_url')
+      .in('id', cohortIds)
+    if (cohortRes.error) {
+      const e = cohortRes.error as {
+        message?: string; code?: string; details?: string; hint?: string
+      }
+      console.warn('[dashboard] cohorts query with image_url failed, retrying without:', {
+        message: e.message, code: e.code, details: e.details, hint: e.hint,
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fallback = await (supabase as any)
+        .from('cohorts')
+        .select('id, title, status, starts_at, ends_at, course_id, company_id')
+        .in('id', cohortIds)
+      if (fallback.error) {
+        const e2 = fallback.error as {
+          message?: string; code?: string; details?: string; hint?: string
+        }
+        console.error('[dashboard] cohorts fallback query also failed:', {
+          message: e2.message, code: e2.code, details: e2.details, hint: e2.hint,
+        })
+      }
+      cohortRes = {
+        data: ((fallback.data ?? []) as Array<Omit<CohortRow, 'image_url'>>).map(
+          (c) => ({ ...c, image_url: null }) as CohortRow,
+        ),
+        error: null,
+      }
+    }
+    for (const c of (cohortRes.data ?? []) as CohortRow[]) cohortMap.set(c.id, c)
+  }
+
+  const courseIdsForJoin = Array.from(
+    new Set(Array.from(cohortMap.values()).map((c) => c.course_id).filter(Boolean)),
+  )
+  if (courseIdsForJoin.length > 0) {
+    const { data: rawCourses } = await supabase
+      .from('courses')
+      .select('id, title, slug')
+      .in('id', courseIdsForJoin)
+    for (const c of (rawCourses ?? []) as CourseRow[]) courseMap.set(c.id, c)
+  }
+
+  const orgIdsForJoin = Array.from(
+    new Set(
+      Array.from(cohortMap.values())
+        .map((c) => c.company_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  )
+  if (orgIdsForJoin.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rawOrgs } = await (supabase as any)
+      .from('organizations')
+      .select('id, name, logo_url')
+      .in('id', orgIdsForJoin)
+    for (const o of (rawOrgs ?? []) as OrgRow[]) orgMap.set(o.id, o)
+  }
+
+  // Reshape into the existing EnrollmentWithCohort shape so downstream code
+  // (cohort grid + company tier) keeps working unchanged.
+  const enrollments: EnrollmentWithCohort[] = rawEnrollments.map((e) => {
+    const cohort = cohortMap.get(e.cohort_id) ?? null
+    const course = cohort ? courseMap.get(cohort.course_id) ?? null : null
+    const org = cohort?.company_id ? orgMap.get(cohort.company_id) ?? null : null
+    return {
+      id: e.id,
+      cohort_id: e.cohort_id,
+      enrolled_at: e.enrolled_at,
+      status: e.status,
+      cohorts: cohort
+        ? {
+            id: cohort.id,
+            title: cohort.title,
+            status: cohort.status,
+            starts_at: cohort.starts_at,
+            ends_at: cohort.ends_at,
+            course_id: cohort.course_id,
+            company_id: cohort.company_id,
+            image_url: cohort.image_url,
+            courses: course,
+            organizations: org,
+          }
+        : null,
+    }
+  })
 
   // Build lessonsByCourse for cohort-card percentages + Resume button
   const courseIds = enrollments
