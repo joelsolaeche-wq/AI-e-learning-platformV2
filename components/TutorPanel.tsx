@@ -193,9 +193,11 @@ export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Pro
     ? // Fullscreen-ish overlay (anchored bottom-right of viewport)
       'fixed bottom-7 right-7 z-50 h-[min(720px,85vh)] w-[min(900px,92vw)] shadow-[0_32px_64px_rgba(0,0,0,0.6),0_0_48px_rgba(139,92,246,0.3)]'
     : isEmbedded
-      ? // Inline inside the parent column (Codecademy-style). Scales with
-        // viewport while staying readable on smaller screens.
-        'relative w-full h-[calc(100vh-260px)] min-h-[520px] max-h-[760px] shadow-[0_8px_24px_rgba(0,0,0,0.25)]'
+      ? // Inline inside the parent column (Codecademy-style). Fills the
+        // right column down to near the viewport bottom — the parent uses
+        // `lg:sticky lg:top-4` so this stays anchored while the left
+        // column scrolls. min-h keeps it readable on shorter screens.
+        'relative w-full h-[calc(100vh-120px)] min-h-[560px] shadow-[0_8px_24px_rgba(0,0,0,0.25)]'
       : // Floating mode default size
         'fixed bottom-7 right-7 z-50 h-[640px] w-[440px] shadow-[0_24px_48px_rgba(0,0,0,0.5),0_0_32px_rgba(139,92,246,0.25)]'
 

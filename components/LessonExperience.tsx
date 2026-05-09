@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation'
 import {
   Clock,
   ChevronRight,
-  ChevronLeft,
-  PlayCircle,
   Lock,
   Sparkles,
   Check,
@@ -81,7 +79,8 @@ export function LessonExperience({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const router = useRouter()
 
-  // Course-wide totals + flat lesson list (used for prev/next nav + position).
+  // Course-wide totals + flat lesson list (used for the curriculum drawer +
+  // the "Next lesson" CTA on the locked-quiz/no-quiz states).
   const flatLessons = curriculum.flatMap((m) => m.lessons)
   const totalLessons = flatLessons.length
   const completedLessons = flatLessons.filter((l) => l.completed).length
@@ -89,13 +88,10 @@ export function LessonExperience({
     totalLessons > 0 ? Math.floor((completedLessons / totalLessons) * 100) : 0
 
   const currentIndex = flatLessons.findIndex((l) => l.id === lesson.id)
-  const prevLesson = currentIndex > 0 ? flatLessons[currentIndex - 1] : null
   const nextLesson =
     currentIndex >= 0 && currentIndex < flatLessons.length - 1
       ? flatLessons[currentIndex + 1]
       : null
-  const positionLabel =
-    currentIndex >= 0 ? `${currentIndex + 1} / ${totalLessons}` : `– / ${totalLessons}`
 
   async function markVideoComplete() {
     if (marking || isLessonComplete) return
@@ -376,7 +372,9 @@ export function LessonExperience({
           </section>
         </div>
 
-        {/* RIGHT: Synapse — always visible, taller, scales with viewport */}
+        {/* RIGHT: Synapse — always visible, fills the right column down to
+            the bottom of the viewport. Sticky so it stays put while the
+            left column scrolls. */}
         <aside className="w-full flex-shrink-0 lg:sticky lg:top-4 lg:w-[400px] xl:w-[420px]">
           <TutorPanel
             mode="embedded"
@@ -385,46 +383,6 @@ export function LessonExperience({
           />
         </aside>
       </div>
-
-      {/* ── Bottom Back / position / Next bar ─────────────────────────────── */}
-      <footer className="sticky bottom-4 z-30 flex items-center justify-between gap-3 rounded-2xl border border-border bg-card/85 px-4 py-3 backdrop-blur-md shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]">
-        {prevLesson ? (
-          <Link
-            href={`/dashboard/lesson/${prevLesson.id}`}
-            className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/40 px-4 py-2 text-[13px] font-medium text-foreground hover:bg-secondary transition-colors"
-          >
-            <ChevronLeft size={14} />
-            <span className="hidden max-w-[160px] truncate sm:inline">{prevLesson.title}</span>
-            <span className="sm:hidden">Back</span>
-          </Link>
-        ) : (
-          <span className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/20 px-4 py-2 text-[13px] text-muted-foreground/60">
-            <ChevronLeft size={14} /> Start
-          </span>
-        )}
-
-        <div className="flex flex-col items-center text-center">
-          <span className="font-mono text-[13px] font-semibold tabular-nums">{positionLabel}</span>
-          <span className="text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
-            Lesson
-          </span>
-        </div>
-
-        {nextLesson ? (
-          <Link
-            href={`/dashboard/lesson/${nextLesson.id}`}
-            className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4 py-2 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
-          >
-            <span className="hidden max-w-[160px] truncate sm:inline">{nextLesson.title}</span>
-            <span className="sm:hidden">Next</span>
-            <ChevronRight size={14} />
-          </Link>
-        ) : (
-          <span className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/20 px-4 py-2 text-[13px] text-muted-foreground/60">
-            Course end <PlayCircle size={14} />
-          </span>
-        )}
-      </footer>
     </main>
   )
 }
