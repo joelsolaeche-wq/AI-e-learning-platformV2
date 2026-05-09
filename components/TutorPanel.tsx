@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Send, X, Minus, Maximize2, Minimize2 } from 'lucide-react'
+import { AssistantMessage } from '@/components/synapse/AssistantMessage'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
@@ -261,11 +262,15 @@ export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Pro
               'rounded-xl px-3 py-2 text-[13px] leading-[1.5]',
               isExpanded ? 'max-w-[78%]' : 'max-w-[88%]',
               m.role === 'user'
-                ? 'self-end bg-gradient-to-br from-primary to-primary/80 text-primary-foreground'
+                ? 'self-end bg-gradient-to-br from-primary to-primary/80 text-primary-foreground whitespace-pre-wrap'
                 : 'self-start border border-border bg-secondary/60 text-foreground',
             ].join(' ')}
           >
-            {m.content}
+            {m.role === 'assistant' ? (
+              <AssistantMessage content={m.content} />
+            ) : (
+              m.content
+            )}
           </div>
         ))}
         {loading && (
