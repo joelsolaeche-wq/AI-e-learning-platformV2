@@ -13,7 +13,6 @@ import {
 import type { Database } from '@/lib/database.types'
 import { getLearnerStats } from '@/lib/learner-stats'
 import { JoinByCodeForm } from '@/components/JoinByCodeForm'
-import { CohortCard } from '@/components/cohorts/CohortCard'
 import { CompanyCard } from '@/components/companies/CompanyCard'
 
 // ---------------------------------------------------------------------------
@@ -443,80 +442,63 @@ export default async function DashboardPage() {
         </section>
       ) : (
         <>
-          {/* Companies tier — only when learner spans multiple companies */}
+          {/* Companies grid — Mati's drilldown: company → cohorts → courses.
+              Each company card links to /dashboard/company/[id] which lists
+              the learner's cohorts within that company; from there, a
+              cohort card opens /dashboard/cohort/[id] with the courses. */}
           {(() => {
-            const byCompany = new Map<string, { id: string; name: string; logo_url: string | null; cohortCount: number }>()
+            const byCompany = new Map<string, {
+              id: string
+              name: string
+              logo_url: string | null
+              cohortCount: number
+            }>()
             for (const e of enrollments) {
-              const org = e.cohorts?.organizations
-              if (!org) continue
-              const existing = byCompany.get(org.id)
-              if (existing) existing.cohortCount += 1
-              else byCompany.set(org.id, { id: org.id, name: org.name, logo_url: org.logo_url, cohortCount: 1 })
+              const cohort = e.cohorts
+              if (!cohort?.company_id) continue
+              const org = cohort.organizations
+              const id = cohort.company_id
+              const existing = byCompany.get(id)
+              if (existing) {
+                existing.cohortCount += 1
+              } else {
+                byCompany.set(id, {
+                  id,
+                  // Fall back to a placeholder when RLS hides org data — the
+                  // drilldown still works, the user just sees "Company" until
+                  // org_id is set on their profile.
+                  name: org?.name ?? 'Your company',
+                  logo_url: org?.logo_url ?? null,
+                  cohortCount: 1,
+                })
+              }
             }
             const companies = Array.from(byCompany.values())
-            if (companies.length <= 1) return null
             return (
-              <section className="flex flex-col gap-3">
-                <h2 className="text-[16px] font-bold tracking-tight">Your companies</h2>
+              <section className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-[18px] font-bold tracking-tight">Your companies</h2>
+                  <div className="flex items-center gap-3">
+                    <JoinByCodeForm />
+                    <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
+                      Browse catalog <ChevronRight size={14} />
+                    </Link>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {companies.map((c) => (
                     <CompanyCard
                       key={c.id}
                       company={{ id: c.id, name: c.name, logo_url: c.logo_url }}
                       cohortCount={c.cohortCount}
-                      href={`/dashboard/team`}
+                      href={`/dashboard/company/${c.id}`}
                     />
                   ))}
                 </div>
               </section>
             )
           })()}
-
-          <section className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-[18px] font-bold tracking-tight">Your cohorts</h2>
-              <div className="flex items-center gap-3">
-                <JoinByCodeForm />
-                <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
-                  View all <ChevronRight size={14} />
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {enrollments.map((enrollment) => {
-                const cohort = enrollment.cohorts
-                if (!cohort) return null
-                const courseLessons = lessonsByCourse.get(cohort.course_id) ?? []
-                const totalLessons = courseLessons.length
-                const completedCount = courseLessons.filter((l) => completedLessonIds.has(l.id)).length
-                const firstUnfinished = courseLessons.find((l) => !completedLessonIds.has(l.id)) ?? courseLessons[0]
-                const resumeHref = firstUnfinished
-                  ? `/dashboard/lesson/${firstUnfinished.id}`
-                  : `/catalog/${cohort.course_id}`
-                const isNew = Date.now() - new Date(enrollment.enrolled_at).getTime() < 48 * 60 * 60 * 1000
-
-                return (
-                  <CohortCard
-                    key={enrollment.id}
-                    variant="learner"
-                    cohort={{
-                      id: cohort.id,
-                      title: cohort.courses?.title ?? cohort.title,
-                      status: cohort.status,
-                      starts_at: cohort.starts_at,
-                      ends_at: cohort.ends_at,
-                      image_url: cohort.image_url,
-                    }}
-                    subtitle={`${totalLessons} lessons`}
-                    progress={{ completed: completedCount, total: totalLessons }}
-                    isNew={isNew}
-                    primaryHref={resumeHref}
-                  />
-                )
-              })}
-            </div>
-          </section>
         </>
       )}
 
