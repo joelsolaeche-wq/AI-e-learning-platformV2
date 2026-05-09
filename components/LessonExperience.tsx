@@ -2,12 +2,22 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, ChevronRight, PlayCircle, Lock, Sparkles, Check, FlaskConical } from 'lucide-react'
+import {
+  Clock,
+  ChevronRight,
+  ChevronLeft,
+  PlayCircle,
+  Lock,
+  Sparkles,
+  Check,
+  FlaskConical,
+  Menu,
+  X,
+} from 'lucide-react'
 import Link from 'next/link'
 import { VideoPlayer } from '@/components/VideoPlayer'
 import { QuizSection } from '@/components/QuizSection'
 import { LabSection, type LabData, type LabSubmission } from '@/components/LabSection'
-import { Ring } from '@/components/ui/Ring'
 import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 import { TranscriptView } from '@/components/TranscriptView'
 import { TutorPanel } from '@/components/TutorPanel'
@@ -68,27 +78,25 @@ export function LessonExperience({
   const TABS = lab ? ALL_TABS : BASE_TABS
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
   const [marking, setMarking] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const router = useRouter()
 
-  // Course-wide totals
-  const allLessons = curriculum.flatMap((m) => m.lessons)
-  const totalLessons = allLessons.length
-  const completedLessons = allLessons.filter((l) => l.completed).length
-  const coursePct = totalLessons > 0 ? Math.floor((completedLessons / totalLessons) * 100) : 0
+  // Course-wide totals + flat lesson list (used for prev/next nav + position).
+  const flatLessons = curriculum.flatMap((m) => m.lessons)
+  const totalLessons = flatLessons.length
+  const completedLessons = flatLessons.filter((l) => l.completed).length
+  const coursePct =
+    totalLessons > 0 ? Math.floor((completedLessons / totalLessons) * 100) : 0
 
-  // Find next lesson (current module first, then next module)
-  let nextLesson: CurriculumModule['lessons'][0] | null = null
-  let foundCurrent = false
-  outer: for (const mod of curriculum) {
-    for (const l of mod.lessons) {
-      if (foundCurrent) { nextLesson = l; break outer }
-      if (l.id === lesson.id) foundCurrent = true
-    }
-  }
+  const currentIndex = flatLessons.findIndex((l) => l.id === lesson.id)
+  const prevLesson = currentIndex > 0 ? flatLessons[currentIndex - 1] : null
+  const nextLesson =
+    currentIndex >= 0 && currentIndex < flatLessons.length - 1
+      ? flatLessons[currentIndex + 1]
+      : null
+  const positionLabel =
+    currentIndex >= 0 ? `${currentIndex + 1} / ${totalLessons}` : `– / ${totalLessons}`
 
-  // Manual mark-complete escape hatch: hits the same /api/video/progress route
-  // the player auto-uses, with completed=true. Used when auto-detect missed
-  // because the lesson has no duration_seconds in the DB.
   async function markVideoComplete() {
     if (marking || isLessonComplete) return
     setMarking(true)
@@ -112,230 +120,311 @@ export function LessonExperience({
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1440px] flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-      {/* Left: video + tabs + quiz */}
-      <div className="min-w-0 flex-1 flex flex-col gap-6">
-        {/* Video */}
-        <div className="relative rounded-2xl overflow-hidden glow-soft">
-          {(lesson.video_source === 'youtube' ? lesson.youtube_id : lesson.mux_playback_id) ? (
-            <VideoPlayer
-              lessonId={lesson.id}
-              resumePosition={resumePosition}
-              duration={lesson.duration_seconds ?? 0}
-              videoSource={lesson.video_source === 'youtube' ? 'youtube' : 'mux'}
-              playbackId={lesson.mux_playback_id}
-              youtubeId={lesson.youtube_id}
+    <main className="mx-auto flex w-full max-w-[1440px] flex-col gap-5">
+      {/* ── Top lesson bar — course title + curriculum drawer trigger ─────── */}
+      <header className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card/60 px-5 py-3 backdrop-blur-md">
+        <button
+          type="button"
+          onClick={() => setDrawerOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-[12.5px] font-medium text-foreground hover:bg-secondary transition-colors"
+          aria-label="Open course curriculum"
+        >
+          <Menu size={14} />
+          <span className="hidden sm:inline">Curriculum</span>
+        </button>
+
+        <div className="min-w-0 flex-1 text-center">
+          <div className="truncate text-[14px] font-bold tracking-tight">
+            {courseTitle ?? moduleTitle}
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {moduleTitle}
+          </div>
+        </div>
+
+        <div className="hidden items-center gap-2 text-[12px] text-muted-foreground md:flex">
+          <span className="font-mono tabular-nums">{coursePct}%</span>
+          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-secondary/60">
+            <div
+              className="h-full bg-gradient-to-r from-primary to-accent"
+              style={{ width: `${coursePct}%` }}
             />
-          ) : (
-            <div className="aspect-video flex items-center justify-center rounded-2xl bg-muted">
-              <p className="text-sm text-muted-foreground">Video not available</p>
-            </div>
-          )}
-        </div>
-
-        {/* Title block */}
-        <div>
-          <div className="flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
-            {courseTitle && <span>{courseTitle}</span>}
-            {courseTitle && <span className="text-muted-foreground/40">/</span>}
-            <span className="text-primary">{moduleTitle}</span>
-          </div>
-          <h1 className="mt-1.5 text-[26px] font-bold tracking-[-0.02em] leading-tight">{lesson.title}</h1>
-          <div className="mt-1.5 flex items-center gap-3 text-[13px] text-muted-foreground">
-            {lesson.duration_seconds && (
-              <span className="inline-flex items-center gap-1.5">
-                <Clock size={13} />
-                {formatDuration(lesson.duration_seconds)}
-              </span>
-            )}
-            {isLessonComplete && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-400">
-                <Check size={10} strokeWidth={3} /> Lesson complete
-              </span>
-            )}
           </div>
         </div>
+      </header>
 
-        {/* Tabs */}
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-0.5 rounded-xl border border-border bg-card/50 p-1 w-fit">
-            {TABS.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab as Tab)}
-                className={cn(
-                  'relative px-4 py-1.5 text-[13px] font-medium rounded-lg transition-all duration-200',
-                  activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {activeTab === tab && (
-                  <span className="absolute inset-0 rounded-lg bg-gradient-to-b from-primary/20 to-primary/[0.08] ring-1 ring-primary/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]" />
-                )}
-                {tab === 'Lab' ? (
-                  <span className="relative flex items-center gap-1.5">
-                    <FlaskConical size={12} /> Lab
-                  </span>
-                ) : (
-                  <span className="relative">{tab}</span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="min-h-[80px]">
-            {activeTab === 'Overview' && (
-              <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground leading-relaxed">
-                <p>
-                  This lesson is part of the module{' '}
-                  <span className="font-medium text-foreground">{moduleTitle}</span>. Watch the
-                  full video to unlock the knowledge check below.
-                </p>
-              </div>
-            )}
-            {activeTab === 'Transcript' && (
-              <TranscriptView
-                segments={lesson.transcript_segments}
-                flatText={lesson.transcript}
-              />
-            )}
-            {activeTab === 'Resources' && (
-              <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">
-                No additional resources for this lesson.
-              </div>
-            )}
-            {activeTab === 'Notes' && (
-              <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">
-                Personal notes coming soon.
-              </div>
-            )}
-            {activeTab === 'Lab' && lab && (
-              <LabSection lessonId={lesson.id} lab={lab} latestSubmission={latestSubmission} />
-            )}
-          </div>
-        </div>
-
-        {/* Knowledge check — ALWAYS rendered, three states */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-            Knowledge check
-          </h2>
-
-          {clientQuestions.length === 0 ? (
-            // State 1: No quiz exists for this lesson
-            <div className="rounded-2xl border border-border bg-card p-8 flex flex-col items-center gap-3 text-center">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-accent/10 ring-1 ring-primary/20">
-                <Sparkles size={20} className="text-primary" />
-              </div>
+      {/* ── Curriculum drawer (slide-in from right) ───────────────────────── */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-40 flex">
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Close curriculum"
+            onClick={() => setDrawerOpen(false)}
+            className="flex-1 bg-black/55 backdrop-blur-sm"
+          />
+          {/* Panel */}
+          <div className="flex h-full w-full max-w-[420px] flex-col border-l border-border bg-[#11111C] shadow-[-12px_0_32px_rgba(0,0,0,0.5)] animate-[fadeUp_.18s_ease]">
+            <div className="flex items-center justify-between border-b border-border px-5 py-3">
               <div>
-                <p className="text-[14px] font-semibold">No quiz for this lesson</p>
-                <p className="mt-1 max-w-[440px] text-[13px] text-muted-foreground">
-                  This lesson is watch-and-reflect. Let it sink in, then continue when you&apos;re ready.
-                </p>
-              </div>
-              {nextLesson && (
-                <Link
-                  href={`/dashboard/lesson/${nextLesson.id}`}
-                  className="mt-1 inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4 py-2 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
-                >
-                  Next lesson <ChevronRight size={13} />
-                </Link>
-              )}
-            </div>
-          ) : !isLessonComplete ? (
-            // State 2: Has quiz, but video isn't complete yet
-            <div className="rounded-2xl border border-border bg-card p-8 flex flex-col items-center gap-3 text-center">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-secondary/60">
-                <Lock size={20} className="text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-[14px] font-semibold">Quiz locked</p>
-                <p className="mt-1 max-w-[440px] text-[13px] text-muted-foreground">
-                  Watch the video to unlock {clientQuestions.length} question
-                  {clientQuestions.length !== 1 ? 's' : ''}. The quiz auto-unlocks at 85%.
-                </p>
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Course
+                </div>
+                <div className="text-[14.5px] font-bold tracking-tight">
+                  {courseTitle ?? moduleTitle}
+                </div>
               </div>
               <button
                 type="button"
-                onClick={markVideoComplete}
-                disabled={marking}
-                className="mt-1 inline-flex items-center gap-2 rounded-[10px] border border-primary/40 bg-primary/15 px-4 py-2 text-[13px] font-semibold text-primary transition-all hover:border-transparent hover:bg-primary hover:text-primary-foreground hover:shadow-[0_0_16px_rgba(139,92,246,0.4)] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setDrawerOpen(false)}
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                aria-label="Close"
               >
-                {marking ? 'Marking…' : (
-                  <>
-                    <Check size={13} strokeWidth={3} /> Mark video complete
-                  </>
-                )}
+                <X size={15} />
               </button>
             </div>
-          ) : (
-            // State 3: Has quiz, video is complete → render the actual quiz
-            <QuizSection
-              clientQuestions={clientQuestions}
-              lessonId={lesson.id}
-              isLessonComplete={true}
-            />
-          )}
-        </section>
-      </div>
-
-      {/* Right: curriculum + embedded Synapse (Codecademy-style) */}
-      <aside className="w-full flex-shrink-0 flex flex-col gap-4 lg:w-[400px]">
-        <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Course progress
-              </span>
-              <div className="mt-0.5 truncate text-[14.5px] font-bold tracking-tight">
-                {courseTitle ?? moduleTitle}
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-4">
+              <div className="rounded-xl border border-border bg-card px-4 py-3">
+                <div className="flex items-center justify-between gap-3 text-[12px]">
+                  <span className="text-muted-foreground">
+                    <span className="font-mono font-semibold text-foreground">
+                      {completedLessons}
+                    </span>
+                    <span className="mx-1">/</span>
+                    <span className="font-mono">{totalLessons}</span> complete
+                  </span>
+                  <span className="font-mono tabular-nums text-muted-foreground">
+                    {coursePct}%
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary/60">
+                  <div
+                    className="h-full bg-gradient-to-r from-primary to-accent"
+                    style={{ width: `${coursePct}%` }}
+                  />
+                </div>
               </div>
+              <CurriculumTree
+                modules={curriculum}
+                currentLessonId={lesson.id}
+                variant="compact"
+              />
             </div>
-            <Ring pct={coursePct} size={56} stroke={5}>
-              <span className="text-[11px] font-bold">{coursePct}%</span>
-            </Ring>
           </div>
+        </div>
+      )}
 
-          <div className="flex items-center gap-3 text-[12px]">
-            <span className="text-muted-foreground">
-              <span className="font-mono font-semibold text-foreground">{completedLessons}</span>
-              <span className="mx-1">/</span>
-              <span className="font-mono">{totalLessons}</span>{' '}
-              lessons complete
-            </span>
-          </div>
-
-          {nextLesson && (
-            <Link
-              href={`/dashboard/lesson/${nextLesson.id}`}
-              className="group mt-1 flex items-center gap-3 rounded-xl border border-border bg-secondary/30 p-3 transition-all hover:border-primary/30 hover:bg-secondary/60"
-            >
-              <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-[10px] border border-primary/30 bg-primary/15 text-primary transition-all group-hover:border-transparent group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-[0_0_16px_rgba(139,92,246,0.5)]">
-                <PlayCircle size={14} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Up next</div>
-                <div className="truncate text-[12.5px] font-semibold">{nextLesson.title}</div>
+      {/* ── Main 2-column area: lesson content (left) + Synapse (right) ──── */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
+        {/* LEFT: Learn — video + tabs + quiz */}
+        <div className="min-w-0 flex-1 flex flex-col gap-6">
+          {/* Video */}
+          <div className="relative rounded-2xl overflow-hidden glow-soft">
+            {(lesson.video_source === 'youtube' ? lesson.youtube_id : lesson.mux_playback_id) ? (
+              <VideoPlayer
+                lessonId={lesson.id}
+                resumePosition={resumePosition}
+                duration={lesson.duration_seconds ?? 0}
+                videoSource={lesson.video_source === 'youtube' ? 'youtube' : 'mux'}
+                playbackId={lesson.mux_playback_id}
+                youtubeId={lesson.youtube_id}
+              />
+            ) : (
+              <div className="aspect-video flex items-center justify-center rounded-2xl bg-muted">
+                <p className="text-sm text-muted-foreground">Video not available</p>
               </div>
-              <ChevronRight size={13} className="shrink-0 text-muted-foreground transition-colors group-hover:text-primary" />
-            </Link>
-          )}
+            )}
+          </div>
+
+          {/* Title block */}
+          <div>
+            <div className="flex items-center gap-2 text-[11.5px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">
+              <span className="text-primary">{moduleTitle}</span>
+            </div>
+            <h1 className="mt-1.5 text-[26px] font-bold tracking-[-0.02em] leading-tight">{lesson.title}</h1>
+            <div className="mt-1.5 flex items-center gap-3 text-[13px] text-muted-foreground">
+              {lesson.duration_seconds && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock size={13} />
+                  {formatDuration(lesson.duration_seconds)}
+                </span>
+              )}
+              {isLessonComplete && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-400/15 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-400">
+                  <Check size={10} strokeWidth={3} /> Lesson complete
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-0.5 rounded-xl border border-border bg-card/50 p-1 w-fit">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as Tab)}
+                  className={cn(
+                    'relative px-4 py-1.5 text-[13px] font-medium rounded-lg transition-all duration-200',
+                    activeTab === tab ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {activeTab === tab && (
+                    <span className="absolute inset-0 rounded-lg bg-gradient-to-b from-primary/20 to-primary/[0.08] ring-1 ring-primary/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]" />
+                  )}
+                  {tab === 'Lab' ? (
+                    <span className="relative flex items-center gap-1.5">
+                      <FlaskConical size={12} /> Lab
+                    </span>
+                  ) : (
+                    <span className="relative">{tab}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="min-h-[80px]">
+              {activeTab === 'Overview' && (
+                <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground leading-relaxed">
+                  <p>
+                    This lesson is part of the module{' '}
+                    <span className="font-medium text-foreground">{moduleTitle}</span>. Watch the
+                    full video to unlock the knowledge check below.
+                  </p>
+                </div>
+              )}
+              {activeTab === 'Transcript' && (
+                <TranscriptView
+                  segments={lesson.transcript_segments}
+                  flatText={lesson.transcript}
+                />
+              )}
+              {activeTab === 'Resources' && (
+                <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">
+                  No additional resources for this lesson.
+                </div>
+              )}
+              {activeTab === 'Notes' && (
+                <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">
+                  Personal notes coming soon.
+                </div>
+              )}
+              {activeTab === 'Lab' && lab && (
+                <LabSection lessonId={lesson.id} lab={lab} latestSubmission={latestSubmission} />
+              )}
+            </div>
+          </div>
+
+          {/* Knowledge check — ALWAYS rendered, three states */}
+          <section className="flex flex-col gap-3">
+            <h2 className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Knowledge check
+            </h2>
+
+            {clientQuestions.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-card p-8 flex flex-col items-center gap-3 text-center">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-accent/10 ring-1 ring-primary/20">
+                  <Sparkles size={20} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-[14px] font-semibold">No quiz for this lesson</p>
+                  <p className="mt-1 max-w-[440px] text-[13px] text-muted-foreground">
+                    This lesson is watch-and-reflect. Let it sink in, then continue when you&apos;re ready.
+                  </p>
+                </div>
+                {nextLesson && (
+                  <Link
+                    href={`/dashboard/lesson/${nextLesson.id}`}
+                    className="mt-1 inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4 py-2 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
+                  >
+                    Next lesson <ChevronRight size={13} />
+                  </Link>
+                )}
+              </div>
+            ) : !isLessonComplete ? (
+              <div className="rounded-2xl border border-border bg-card p-8 flex flex-col items-center gap-3 text-center">
+                <div className="grid h-12 w-12 place-items-center rounded-2xl bg-secondary/60">
+                  <Lock size={20} className="text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-[14px] font-semibold">Quiz locked</p>
+                  <p className="mt-1 max-w-[440px] text-[13px] text-muted-foreground">
+                    Watch the video to unlock {clientQuestions.length} question
+                    {clientQuestions.length !== 1 ? 's' : ''}. The quiz auto-unlocks at 85%.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={markVideoComplete}
+                  disabled={marking}
+                  className="mt-1 inline-flex items-center gap-2 rounded-[10px] border border-primary/40 bg-primary/15 px-4 py-2 text-[13px] font-semibold text-primary transition-all hover:border-transparent hover:bg-primary hover:text-primary-foreground hover:shadow-[0_0_16px_rgba(139,92,246,0.4)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {marking ? 'Marking…' : (
+                    <>
+                      <Check size={13} strokeWidth={3} /> Mark video complete
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <QuizSection
+                clientQuestions={clientQuestions}
+                lessonId={lesson.id}
+                isLessonComplete={true}
+              />
+            )}
+          </section>
         </div>
 
-        <CurriculumTree
-          modules={curriculum}
-          currentLessonId={lesson.id}
-          variant="compact"
-        />
+        {/* RIGHT: Synapse — always visible, taller, scales with viewport */}
+        <aside className="w-full flex-shrink-0 lg:sticky lg:top-4 lg:w-[400px] xl:w-[420px]">
+          <TutorPanel
+            mode="embedded"
+            lessonId={lesson.id}
+            initialMessages={tutorInitialMessages}
+          />
+        </aside>
+      </div>
 
-        {/* Embedded Synapse — always visible inside the right column. The
-            Expand button on the panel header opens a near-fullscreen overlay
-            for focused chatting. */}
-        <TutorPanel
-          mode="embedded"
-          lessonId={lesson.id}
-          initialMessages={tutorInitialMessages}
-        />
-      </aside>
+      {/* ── Bottom Back / position / Next bar ─────────────────────────────── */}
+      <footer className="sticky bottom-4 z-30 flex items-center justify-between gap-3 rounded-2xl border border-border bg-card/85 px-4 py-3 backdrop-blur-md shadow-[0_12px_40px_-12px_rgba(0,0,0,0.6)]">
+        {prevLesson ? (
+          <Link
+            href={`/dashboard/lesson/${prevLesson.id}`}
+            className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/40 px-4 py-2 text-[13px] font-medium text-foreground hover:bg-secondary transition-colors"
+          >
+            <ChevronLeft size={14} />
+            <span className="hidden max-w-[160px] truncate sm:inline">{prevLesson.title}</span>
+            <span className="sm:hidden">Back</span>
+          </Link>
+        ) : (
+          <span className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/20 px-4 py-2 text-[13px] text-muted-foreground/60">
+            <ChevronLeft size={14} /> Start
+          </span>
+        )}
+
+        <div className="flex flex-col items-center text-center">
+          <span className="font-mono text-[13px] font-semibold tabular-nums">{positionLabel}</span>
+          <span className="text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground">
+            Lesson
+          </span>
+        </div>
+
+        {nextLesson ? (
+          <Link
+            href={`/dashboard/lesson/${nextLesson.id}`}
+            className="inline-flex items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4 py-2 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
+          >
+            <span className="hidden max-w-[160px] truncate sm:inline">{nextLesson.title}</span>
+            <span className="sm:hidden">Next</span>
+            <ChevronRight size={14} />
+          </Link>
+        ) : (
+          <span className="inline-flex items-center gap-2 rounded-[10px] border border-border bg-secondary/20 px-4 py-2 text-[13px] text-muted-foreground/60">
+            Course end <PlayCircle size={14} />
+          </span>
+        )}
+      </footer>
     </main>
   )
 }
