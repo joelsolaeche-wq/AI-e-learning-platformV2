@@ -6,7 +6,6 @@
 // the learner's next incomplete lesson.
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -262,13 +261,15 @@ export default async function DashboardCohortPage({
                 {/* Banner */}
                 <div className="relative grid aspect-[16/7] place-items-center overflow-hidden bg-gradient-to-br from-primary/30 via-accent/15 to-transparent">
                   {course.thumbnail_url ? (
-                    <Image
-                      src={course.thumbnail_url}
-                      alt={course.title}
-                      fill
-                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                      className="object-cover"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={course.thumbnail_url}
+                        alt={course.title}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </>
                   ) : (
                     <BookOpen size={42} className="text-white/70 drop-shadow" />
                   )}
