@@ -22,7 +22,11 @@ type LessonRow = Pick<
   | 'transcript'
   | 'video_source'
   | 'youtube_id'
->
+> & {
+  // transcript_segments was added in 20260509000001; not yet in regenerated
+  // database.types.ts, so widen the row type here.
+  transcript_segments: { start: number; text: string }[] | null
+}
 
 type ProgressRow = Pick<
   Database['public']['Tables']['lesson_progress']['Row'],
@@ -91,7 +95,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     supabase
       .from('lessons')
       .select(
-        'id, title, module_id, mux_playback_id, duration_seconds, transcript, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
+        'id, title, module_id, mux_playback_id, duration_seconds, transcript, transcript_segments, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
       )
       .eq('id', lessonId)
       .single(),

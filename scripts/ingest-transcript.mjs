@@ -5,6 +5,27 @@
 import { YoutubeTranscript } from 'youtube-transcript'
 import { createClient } from '@supabase/supabase-js'
 
+// Inline copy of normalizeSegments from lib/transcript/format.ts — kept inline
+// so this script has zero TypeScript build dependency.
+const MS_THRESHOLD_SECONDS = 86_400
+function normalizeSegments(raw) {
+  if (raw.length === 0) return []
+  const last = raw[raw.length - 1]
+  const factor = last.offset > MS_THRESHOLD_SECONDS ? 1000 : 1
+  return raw
+    .map((s) => ({
+      start: Math.max(0, Math.round((s.offset / factor) * 100) / 100),
+      text: String(s.text)
+        .replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim(),
+    }))
+    .filter((s) => s.text.length > 0)
+}
+
 const lessonId = process.argv[2]
 const overrideYoutubeId = process.argv[3]
 
@@ -70,11 +91,12 @@ if (decoded.length === 0) {
   process.exit(1)
 }
 
-console.log(`Segments: ${segments.length}`)
+const normalizedSegments = normalizeSegments(segments)
+console.log(`Segments: ${segments.length} (normalized: ${normalizedSegments.length})`)
 console.log(`Total chars: ${decoded.length}`)
 console.log(`Preview: ${decoded.slice(0, 200)}…`)
 
-const updates = { transcript: decoded }
+const updates = { transcript: decoded, transcript_segments: normalizedSegments }
 if (overrideYoutubeId && overrideYoutubeId !== lesson.youtube_id) {
   updates.youtube_id = overrideYoutubeId
   updates.video_source = 'youtube'

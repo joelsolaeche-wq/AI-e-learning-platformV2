@@ -9,6 +9,7 @@ import { QuizSection } from '@/components/QuizSection'
 import { LabSection, type LabData, type LabSubmission } from '@/components/LabSection'
 import { Ring } from '@/components/ui/Ring'
 import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
+import { TranscriptView } from '@/components/TranscriptView'
 import { cn } from '@/lib/utils'
 
 type ClientQuestion = {
@@ -24,6 +25,7 @@ interface LessonExperienceProps {
     mux_playback_id: string | null
     duration_seconds: number | null
     transcript: string | null
+    transcript_segments: { start: number; text: string }[] | null
     video_source: string
     youtube_id: string | null
   }
@@ -187,13 +189,10 @@ export function LessonExperience({
               </div>
             )}
             {activeTab === 'Transcript' && (
-              <div className="rounded-xl border border-border bg-card p-5 text-[13.5px] leading-relaxed text-foreground/80">
-                {lesson.transcript ? (
-                  <p className="whitespace-pre-wrap">{lesson.transcript}</p>
-                ) : (
-                  <p className="text-muted-foreground">No transcript available for this lesson.</p>
-                )}
-              </div>
+              <TranscriptView
+                segments={lesson.transcript_segments}
+                flatText={lesson.transcript}
+              />
             )}
             {activeTab === 'Resources' && (
               <div className="rounded-xl border border-border bg-card p-5 text-[14px] text-muted-foreground">

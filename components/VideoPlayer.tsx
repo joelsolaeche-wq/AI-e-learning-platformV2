@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import MuxPlayer from '@mux/mux-player-react'
 
@@ -28,6 +28,7 @@ export function VideoPlayer({
   // Mux Player's onTimeUpdate callback shape is unreliable and the cast hack
   // (`as unknown as () => void`) was masking it.
   const playerRef = useRef<HTMLElement & { currentTime?: number; duration?: number } | null>(null)
+  const youtubeIframeRef = useRef<HTMLIFrameElement | null>(null)
   const lastSaveRef = useRef<number>(0)
   const completedRef = useRef<boolean>(false)
   const router = useRouter()
@@ -86,6 +87,45 @@ export function VideoPlayer({
     })
   }, [duration, saveProgress, router])
 
+  // Listen for transcript timestamp clicks. The TranscriptView component
+  // dispatches `transcript-seek` events with `{ time }` (seconds); we route
+  // them to whichever player is mounted.
+  useEffect(() => {
+    function onSeek(e: Event) {
+      const detail = (e as CustomEvent<{ time: number }>).detail
+      if (!detail || typeof detail.time !== 'number') return
+      const time = Math.max(0, detail.time)
+
+      if (videoSource === 'mux' && playerRef.current) {
+        try {
+          playerRef.current.currentTime = time
+        } catch {
+          // ignore — player may not be ready yet
+        }
+        return
+      }
+
+      if (videoSource === 'youtube' && youtubeIframeRef.current?.contentWindow) {
+        // Use the YouTube IFrame API postMessage protocol. Requires the
+        // embed URL to include `enablejsapi=1`.
+        try {
+          youtubeIframeRef.current.contentWindow.postMessage(
+            JSON.stringify({
+              event: 'command',
+              func: 'seekTo',
+              args: [time, true],
+            }),
+            '*',
+          )
+        } catch {
+          // ignore
+        }
+      }
+    }
+    window.addEventListener('transcript-seek', onSeek as EventListener)
+    return () => window.removeEventListener('transcript-seek', onSeek as EventListener)
+  }, [videoSource])
+
   if (videoSource === 'youtube') {
     if (!youtubeId) {
       return (
@@ -97,9 +137,12 @@ export function VideoPlayer({
     // YouTube progress isn't auto-tracked here. The "Mark video complete"
     // button in LessonExperience covers manual completion. We use
     // youtube-nocookie.com to avoid third-party cookies in the embed.
-    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?rel=0&modestbranding=1`
+    // `enablejsapi=1` lets us seek via postMessage when a transcript
+    // timestamp is clicked.
+    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?rel=0&modestbranding=1&enablejsapi=1`
     return (
       <iframe
+        ref={youtubeIframeRef}
         src={src}
         title="Lesson video"
         loading="lazy"

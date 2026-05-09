@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { YoutubeTranscript } from 'youtube-transcript'
+import { normalizeSegments } from '@/lib/transcript/format'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -55,9 +56,13 @@ export async function POST(
     if (trimmed.length > 500_000) {
       return NextResponse.json({ error: 'transcript too long (max 500k chars)' }, { status: 400 })
     }
-    const { error: updateError } = await admin
+    // Manual paste has no segment metadata; clear segments so the UI
+    // falls back to flat-text rendering. transcript_segments was added in
+    // 20260509000001 — cast until database.types.ts is regenerated.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: updateError } = await (admin as any)
       .from('lessons')
-      .update({ transcript: trimmed })
+      .update({ transcript: trimmed, transcript_segments: null })
       .eq('id', lessonId)
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 })
@@ -123,9 +128,26 @@ export async function POST(
     )
   }
 
+  // Build structured segments alongside the flat text so the UI can render
+  // paragraph-grouped, timestamped transcript. The flat text still feeds the
+  // tutor system prompt unchanged.
+  const normalizedSegments = normalizeSegments(
+    segments.map((s) => ({
+      text: s.text,
+      offset: (s as { offset?: number }).offset ?? 0,
+      duration: (s as { duration?: number }).duration ?? 0,
+    })),
+  )
+
   // Persist transcript + (idempotently) flip the source/id if needed.
-  const updates: { transcript: string; youtube_id?: string; video_source?: string } = {
+  const updates: {
+    transcript: string
+    transcript_segments: { start: number; text: string }[]
+    youtube_id?: string
+    video_source?: string
+  } = {
     transcript: decoded,
+    transcript_segments: normalizedSegments,
   }
   if (body.youtube_id && body.youtube_id !== lessonRow.youtube_id) {
     updates.youtube_id = body.youtube_id
@@ -134,7 +156,10 @@ export async function POST(
     updates.video_source = 'youtube'
   }
 
-  const { error: updateError } = await admin
+  // transcript_segments was added in 20260509000001 — cast until
+  // database.types.ts is regenerated.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: updateError } = await (admin as any)
     .from('lessons')
     .update(updates)
     .eq('id', lessonId)
