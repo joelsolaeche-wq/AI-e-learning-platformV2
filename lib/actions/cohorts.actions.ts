@@ -38,6 +38,7 @@ export async function createCohortAction(
   const modality = (formData.get('modality') as string) || 'virtual'
   const notes = (formData.get('notes') as string | null)?.trim() || null
   const status = (formData.get('status') as string) || 'draft'
+  const image_url = (formData.get('image_url') as string | null)?.trim() || null
 
   if (!title) return { error: 'Title is required.' }
   if (!starts_at) return { error: 'Start date is required.' }
@@ -53,7 +54,7 @@ export async function createCohortAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (admin as any)
     .from('cohorts')
-    .insert({ course_id: primaryCourseId, company_id, title, starts_at, ends_at, max_seats, modality, notes, status })
+    .insert({ course_id: primaryCourseId, company_id, title, starts_at, ends_at, max_seats, modality, notes, status, image_url })
     .select('id')
     .single()
 
@@ -88,6 +89,7 @@ export async function updateCohortAction(
   const notes = (formData.get('notes') as string | null)?.trim() || null
   const status = (formData.get('status') as string) || 'draft'
   const company_id = (formData.get('company_id') as string | null) || null
+  const image_url = (formData.get('image_url') as string | null)?.trim() || null
 
   if (!cohortId) return { error: 'Cohort ID is required.' }
   if (!title) return { error: 'Title is required.' }
@@ -109,7 +111,7 @@ export async function updateCohortAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('cohorts')
-    .update({ course_id: primaryCourseId, title, starts_at, ends_at, max_seats, modality, notes, status, company_id })
+    .update({ course_id: primaryCourseId, title, starts_at, ends_at, max_seats, modality, notes, status, company_id, image_url })
     .eq('id', cohortId)
 
   if (error) return { error: error.message }

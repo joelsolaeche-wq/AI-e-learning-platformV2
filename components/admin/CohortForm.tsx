@@ -13,6 +13,7 @@ type Cohort = {
   id: string; title: string; course_id: string | null; company_id: string | null;
   starts_at: string; ends_at: string | null; max_seats: number;
   modality: string | null; notes: string | null; status: string;
+  image_url?: string | null;
 }
 
 const initialState: CohortActionResult = { error: null }
@@ -370,6 +371,19 @@ export function CohortForm({ cohort, courses, companies, defaultCompanyId, lockC
             </select>
           </div>
         )}
+
+        <div className="space-y-1.5">
+          <label className="text-[13px] font-medium" htmlFor="image_url">Cover image URL</label>
+          <input
+            id="image_url" name="image_url" type="url"
+            defaultValue={cohort?.image_url ?? ''}
+            className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
+            placeholder="https://example.com/cohort-banner.jpg (optional)"
+          />
+          <p className="text-[11.5px] text-muted-foreground">
+            Optional — appears on the cohort card. Falls back to a gradient when blank.
+          </p>
+        </div>
 
         <div className="space-y-1.5">
           <label className="text-[13px] font-medium" htmlFor="notes">Notes</label>
