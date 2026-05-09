@@ -1,8 +1,13 @@
 // lib/labs/evaluate.ts
 //
-// Synchronous lab evaluator. Pulls a public GitHub repo snapshot, asks Claude
-// for per-criterion 1–3 star scores + feedback, persists everything via
-// service_role (lab_submissions has no UPDATE policy for learners — by design).
+// Synchronous lab evaluator. Branches on submission_type:
+//   - github: pulls a public GitHub repo snapshot, embeds in the prompt.
+//   - pdf:    downloads the PDF from Storage, passes it as a Claude
+//             document content block (native PDF reading; no extraction).
+//   - text:   embeds the learner's free-text response directly in the prompt.
+//
+// Persists per-criterion 1–3 star scores + feedback via service_role
+// (lab_submissions has no UPDATE policy for learners — by design).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateJSON } from '@/lib/ai/model'
@@ -43,7 +48,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: submissionRaw, error: subErr } = await (admin as any)
     .from('lab_submissions')
-    .select('id, lab_id, github_url, status')
+    .select('id, lab_id, github_url, pdf_path, text_content, submission_type, status')
     .eq('id', submissionId)
     .maybeSingle()
   if (subErr || !submissionRaw) {
@@ -52,7 +57,10 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
   const submission = submissionRaw as {
     id: string
     lab_id: string
-    github_url: string
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
+    submission_type: 'github' | 'pdf' | 'text'
     status: string
   }
 
@@ -117,17 +125,8 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
   }
 
   try {
-    // 3. Fetch a snapshot of the repo.
-    const snapshot = await fetchPublicRepoSnapshot(submission.github_url)
-
-    if (snapshot.fetchedFiles.length === 0) {
-      await markFailed(submissionId, 'No code-text files were found in this repo.')
-      return { ok: false, submissionId, error: 'No code-text files were found in this repo.' }
-    }
-
-    // 4. Build the grading prompt.
+    // 3. Build the type-specific grading prompt.
     const transcriptSlice = (lesson?.transcript ?? '').slice(0, MAX_TRANSCRIPT_CHARS)
-    const repoText = renderSnapshotForPrompt(snapshot.fetchedFiles, REPO_SNAPSHOT_CHAR_BUDGET)
     const rubricText = rubric
       .map(
         (r) =>
@@ -135,14 +134,14 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
       )
       .join('\n')
 
-    const systemPrompt = `You are a strict but fair AI grader for an enterprise AI engineering curriculum. You grade learners' GitHub repos against an admin-authored rubric.
+    const systemPrompt = `You are a strict but fair AI grader for an enterprise AI engineering curriculum. You grade learners' work against an admin-authored rubric.
 
 Rules:
 - Score each rubric item from 1 to 3 stars.
-  - 3 stars: meets the description's "excellent" bar with clear evidence in the repo.
+  - 3 stars: meets the description's "excellent" bar with clear evidence in the submission.
   - 2 stars: clearly attempts the criterion but has gaps or omissions.
   - 1 star: missing, broken, or trivially satisfied.
-- Use the lesson transcript and the lab brief as context for what the learner was supposed to build, but ground every score in evidence from the repo files. Cite specific file paths in your feedback when possible.
+- Use the lesson transcript and the lab brief as context for what the learner was supposed to produce, but ground every score in evidence from the submission. When grading a repo, cite file paths. When grading a written response or PDF, quote or paraphrase the relevant passage.
 - For items at 1 or 2 stars, your feedback MUST include a concrete suggestion the learner can act on.
 - For 3-star items, feedback should call out specifically what made the work strong (so the learner knows what to keep doing).
 - overallStars must be the rounded weighted average of per-item stars, clamped to 1–3.
@@ -150,7 +149,17 @@ Rules:
 
 Return ONE rubricItemId per item. The set of rubricItemIds you return must exactly match the rubric provided — no extras, no omissions.`
 
-    const userPrompt = `LESSON: ${lesson?.title ?? '(unknown)'}
+    const evalSchemaHint = `{
+  "items": array (one entry per rubric item) of {
+    "rubricItemId": string (UUID — copy verbatim from the RUBRIC ITEMS list above),
+    "stars": integer (1, 2, or 3),
+    "feedback": string (1-1500 chars; concrete and actionable)
+  },
+  "overallStars": integer (1, 2, or 3),
+  "summary": string (1-2000 chars; 2-4 sentences)
+}`
+
+    const lessonContextPreamble = `LESSON: ${lesson?.title ?? '(unknown)'}
 
 LESSON TRANSCRIPT (first ${MAX_TRANSCRIPT_CHARS} chars):
 """
@@ -166,7 +175,23 @@ ${lab.brief_md}
 
 RUBRIC ITEMS:
 ${rubricText}
+`
 
+    let userPrompt: string
+    let attachments: Array<{ mimeType: string; data: Uint8Array; filename?: string }> | undefined
+
+    if (submission.submission_type === 'github') {
+      if (!submission.github_url) {
+        throw new Error('Submission marked as github type but github_url is null.')
+      }
+      const snapshot = await fetchPublicRepoSnapshot(submission.github_url)
+      if (snapshot.fetchedFiles.length === 0) {
+        await markFailed(submissionId, 'No code-text files were found in this repo.')
+        return { ok: false, submissionId, error: 'No code-text files were found in this repo.' }
+      }
+      const repoText = renderSnapshotForPrompt(snapshot.fetchedFiles, REPO_SNAPSHOT_CHAR_BUDGET)
+      userPrompt = `${lessonContextPreamble}
+SUBMISSION TYPE: GitHub repository
 REPO: ${snapshot.owner}/${snapshot.repo} (default branch: ${snapshot.defaultBranch})
 ${snapshot.truncatedReason ? `[snapshot truncated: ${snapshot.truncatedReason}]` : ''}
 
@@ -174,16 +199,46 @@ REPO CONTENTS:
 ${repoText}
 
 Grade the repo now.`
+    } else if (submission.submission_type === 'text') {
+      if (!submission.text_content) {
+        throw new Error('Submission marked as text type but text_content is null.')
+      }
+      userPrompt = `${lessonContextPreamble}
+SUBMISSION TYPE: Written response
 
-    const evalSchemaHint = `{
-  "items": array (one entry per rubric item) of {
-    "rubricItemId": string (UUID — copy verbatim from the RUBRIC ITEMS list above),
-    "stars": integer (1, 2, or 3),
-    "feedback": string (1-1500 chars; concrete and actionable)
-  },
-  "overallStars": integer (1, 2, or 3),
-  "summary": string (1-2000 chars; 2-4 sentences)
-}`
+LEARNER'S WRITTEN RESPONSE:
+"""
+${submission.text_content}
+"""
+
+Grade the written response now.`
+    } else {
+      // pdf
+      if (!submission.pdf_path) {
+        throw new Error('Submission marked as pdf type but pdf_path is null.')
+      }
+      const { data: pdfBlob, error: pdfErr } = await admin.storage
+        .from('lab-submissions')
+        .download(submission.pdf_path)
+      if (pdfErr || !pdfBlob) {
+        throw new Error(`Could not download submitted PDF: ${pdfErr?.message ?? 'unknown error'}`)
+      }
+      const arrayBuffer = await pdfBlob.arrayBuffer()
+      const pdfBytes = new Uint8Array(arrayBuffer)
+      const filename = submission.pdf_path.split('/').pop()
+      userPrompt = `${lessonContextPreamble}
+SUBMISSION TYPE: PDF document
+The PDF is attached below — read it directly and grade against the rubric.
+
+Grade the PDF now.`
+      attachments = [
+        {
+          mimeType: 'application/pdf',
+          data: pdfBytes,
+          filename,
+        },
+      ]
+    }
 
     const parsed = await Promise.race([
       generateJSON({
@@ -194,6 +249,7 @@ Grade the repo now.`
         // Per-item feedback (≤1500 chars × N items, ~6000 tok worst case) +
         // 2000-char summary + JSON envelope. 8000 leaves headroom.
         maxTokens: 8000,
+        attachments,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(

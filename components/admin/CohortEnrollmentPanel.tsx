@@ -128,7 +128,7 @@ export function CohortEnrollmentPanel({ cohortId, enrollments }: { cohortId: str
             </div>
           )}
           {manualEmail.length >= 2 && userResults.length === 0 && (
-            <p className="text-xs text-muted-foreground px-1">No users found for "{manualEmail}"</p>
+            <p className="text-xs text-muted-foreground px-1">No users found for &quot;{manualEmail}&quot;</p>
           )}
           {manualError && <p className="text-sm text-destructive">{manualError}</p>}
         </div>

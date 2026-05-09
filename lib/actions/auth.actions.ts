@@ -57,7 +57,8 @@ export async function signInAction(_prevState: AuthActionResult, formData: FormD
 
   // company_owner goes directly to their company workspace
   if (signInData.user) {
-    const { data: profile } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: profile } = await (supabase as any)
       .from('profiles')
       .select('role, org_id')
       .eq('id', signInData.user.id)

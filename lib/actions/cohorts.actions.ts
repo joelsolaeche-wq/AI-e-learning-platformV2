@@ -382,10 +382,11 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
 
 // Form-compatible version for useActionState (used by JoinByCodeForm)
 export async function joinByCodeFormAction(
-  _prevState: { error: string | null; success?: boolean },
+  _prevState: { error: string | null; success?: boolean; cohortTitle?: string },
   formData: FormData,
-): Promise<{ error: string | null; success?: boolean }> {
+): Promise<{ error: string | null; success?: boolean; cohortTitle?: string }> {
   const code = (formData.get('code') as string | null)?.trim() ?? ''
   if (!code) return { error: 'Code is required.' }
-  return joinCohortByCodeAction(code)
+  const result = await joinCohortByCodeAction(code)
+  return { error: result.error, success: result.success, cohortTitle: result.cohortTitle }
 }

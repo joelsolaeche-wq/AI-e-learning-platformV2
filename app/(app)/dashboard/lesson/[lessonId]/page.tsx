@@ -178,7 +178,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
   type SubmissionRow = {
     id: string
     status: 'pending' | 'evaluating' | 'scored' | 'failed'
-    github_url: string
+    submission_type: 'github' | 'pdf' | 'text'
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
     overall_stars: number | null
     total_score: number
     max_score: number
@@ -212,7 +215,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
   let latestSubmission: {
     id: string
     status: 'pending' | 'evaluating' | 'scored' | 'failed'
-    github_url: string
+    submission_type: 'github' | 'pdf' | 'text'
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
     overall_stars: number | null
     total_score: number
     max_score: number
@@ -227,7 +233,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     const subResult = await (admin as any)
       .from('lab_submissions')
       .select(
-        'id, status, github_url, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',
+        'id, status, submission_type, github_url, pdf_path, text_content, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',
       )
       .eq('lab_id', lab.id)
       .eq('user_id', user.id)
@@ -240,7 +246,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
       latestSubmission = {
         id: subRow.id,
         status: subRow.status,
+        submission_type: subRow.submission_type,
         github_url: subRow.github_url,
+        pdf_path: subRow.pdf_path,
+        text_content: subRow.text_content,
         overall_stars: subRow.overall_stars,
         total_score: subRow.total_score,
         max_score: subRow.max_score,

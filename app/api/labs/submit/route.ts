@@ -4,14 +4,15 @@ import { evaluateSubmission } from '@/lib/labs/evaluate'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/
+const MIN_TEXT_LEN = 200
+const MAX_TEXT_LEN = 30_000
 
 // Bumped because we run evaluation synchronously in this handler.
 export const maxDuration = 90
 
-// POST /api/labs/submit  body: { lessonId, githubUrl }
-// Verifies enrollment, finds the lab for this lesson, inserts a
-// lab_submissions row with status='pending'. Phase B leaves the row
-// in pending — Phase C wires this handler to call the evaluator.
+// POST /api/labs/submit
+//   body: { lessonId, submissionType: 'github' | 'pdf' | 'text', githubUrl?, pdfPath?, textContent? }
+//   (legacy clients may still send { lessonId, githubUrl } — we infer github type)
 export async function POST(request: Request) {
   const supabase = await createClient()
   const {
@@ -19,7 +20,13 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { lessonId?: string; githubUrl?: string }
+  let body: {
+    lessonId?: string
+    submissionType?: string
+    githubUrl?: string
+    pdfPath?: string
+    textContent?: string
+  }
   try {
     body = await request.json()
   } catch {
@@ -27,15 +34,68 @@ export async function POST(request: Request) {
   }
 
   const lessonId = body.lessonId
-  const githubUrl = (body.githubUrl ?? '').trim()
   if (!lessonId || !UUID_RE.test(lessonId)) {
     return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
   }
-  if (!GITHUB_URL_RE.test(githubUrl)) {
+
+  // Resolve submissionType (default to 'github' for legacy callers that
+  // only sent githubUrl).
+  const rawType = body.submissionType ?? (body.githubUrl ? 'github' : null)
+  if (rawType !== 'github' && rawType !== 'pdf' && rawType !== 'text') {
     return NextResponse.json(
-      { error: 'githubUrl must be a public GitHub repo URL (https://github.com/owner/repo).' },
+      { error: 'submissionType must be one of: github, pdf, text.' },
       { status: 400 },
     )
+  }
+
+  // Validate the type-specific payload and prepare the row fields.
+  const insertFields: {
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
+    submission_type: 'github' | 'pdf' | 'text'
+  } = {
+    github_url: null,
+    pdf_path: null,
+    text_content: null,
+    submission_type: rawType,
+  }
+
+  if (rawType === 'github') {
+    const githubUrl = (body.githubUrl ?? '').trim()
+    if (!GITHUB_URL_RE.test(githubUrl)) {
+      return NextResponse.json(
+        { error: 'githubUrl must be a public GitHub repo URL (https://github.com/owner/repo).' },
+        { status: 400 },
+      )
+    }
+    insertFields.github_url = githubUrl
+  } else if (rawType === 'pdf') {
+    const pdfPath = (body.pdfPath ?? '').trim()
+    // Must be the path returned by /api/labs/upload, namespaced under this user.
+    if (!pdfPath || !pdfPath.startsWith(`${user.id}/`)) {
+      return NextResponse.json(
+        { error: 'pdfPath is missing or not owned by you. Re-upload via /api/labs/upload.' },
+        { status: 400 },
+      )
+    }
+    insertFields.pdf_path = pdfPath
+  } else {
+    // text
+    const text = (body.textContent ?? '').trim()
+    if (text.length < MIN_TEXT_LEN) {
+      return NextResponse.json(
+        { error: `Written response must be at least ${MIN_TEXT_LEN} characters.` },
+        { status: 400 },
+      )
+    }
+    if (text.length > MAX_TEXT_LEN) {
+      return NextResponse.json(
+        { error: `Written response too long (max ${MAX_TEXT_LEN} chars).` },
+        { status: 400 },
+      )
+    }
+    insertFields.text_content = text
   }
 
   // Resolve lesson → module → course (mirror tutor enrollment check).
@@ -99,9 +159,7 @@ export async function POST(request: Request) {
   }
   const labRow = lab as unknown as LabRow
 
-  // Insert the submission row. We use the user-scoped client (not admin) so
-  // RLS verifies auth.uid() = user_id, but writing user_id explicitly so the
-  // insert policy is satisfied. status defaults to 'pending'.
+  // Insert the submission row. RLS verifies auth.uid() = user_id.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: inserted, error: insertErr } = await (supabase as any)
     .from('lab_submissions')
@@ -109,7 +167,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       lab_id: labRow.id,
       cohort_id: enrollmentRow.cohort_id,
-      github_url: githubUrl,
+      ...insertFields,
       status: 'pending',
     })
     .select('id, status, submitted_at')
@@ -122,10 +180,8 @@ export async function POST(request: Request) {
     )
   }
 
-  // Sync evaluation. Caller blocks ~30–60s; evaluator catches its own errors
-  // and persists 'failed' state so the row is always usable post-call. The
-  // result is informational only — the client refreshes the lesson page after
-  // submit and reads the row back.
+  // Sync evaluation. Caller blocks ~30–90s; evaluator catches its own errors
+  // and persists 'failed' state so the row is always usable post-call.
   const evalResult = await evaluateSubmission(inserted.id)
 
   return NextResponse.json({
