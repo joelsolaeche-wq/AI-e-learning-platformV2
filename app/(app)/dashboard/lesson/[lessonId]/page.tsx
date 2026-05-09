@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
 import type { Message } from 'ai'
-import { TutorPanel } from '@/components/TutorPanel'
 import { LessonExperience } from '@/components/LessonExperience'
 import type { CurriculumModule } from '@/components/CurriculumTree'
 
@@ -313,19 +312,17 @@ export default async function LessonPage({ params }: LessonPageProps) {
     }))
 
   return (
-    <>
-      <LessonExperience
-        lesson={lesson}
-        moduleTitle={moduleTitle}
-        courseTitle={courseTitle}
-        resumePosition={resumePosition}
-        isLessonComplete={isLessonComplete}
-        clientQuestions={clientQuestions}
-        curriculum={curriculum}
-        lab={lab}
-        latestSubmission={latestSubmission}
-      />
-      <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
-    </>
+    <LessonExperience
+      lesson={lesson}
+      moduleTitle={moduleTitle}
+      courseTitle={courseTitle}
+      resumePosition={resumePosition}
+      isLessonComplete={isLessonComplete}
+      clientQuestions={clientQuestions}
+      curriculum={curriculum}
+      lab={lab}
+      latestSubmission={latestSubmission}
+      tutorInitialMessages={initialMessages}
+    />
   )
 }

@@ -114,6 +114,11 @@ export default async function DashboardPage() {
     getLearnerStats(supabase, user.id),
   ])
 
+  if (enrollmentsResult.error) {
+    // Surface PostgREST schema-cache or RLS issues that would otherwise
+    // silently empty the cohort grid.
+    console.error('[dashboard] enrollments query failed', enrollmentsResult.error)
+  }
   const enrollments: EnrollmentWithCohort[] =
     (enrollmentsResult.data as EnrollmentWithCohort[] | null) ?? []
   const ownProfile = ownProfileResult.data as PeerProfileRow | null

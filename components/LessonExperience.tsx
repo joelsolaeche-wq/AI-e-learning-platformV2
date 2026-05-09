@@ -10,6 +10,7 @@ import { LabSection, type LabData, type LabSubmission } from '@/components/LabSe
 import { Ring } from '@/components/ui/Ring'
 import { CurriculumTree, type CurriculumModule } from '@/components/CurriculumTree'
 import { TranscriptView } from '@/components/TranscriptView'
+import { TutorPanel } from '@/components/TutorPanel'
 import { cn } from '@/lib/utils'
 
 type ClientQuestion = {
@@ -37,6 +38,8 @@ interface LessonExperienceProps {
   curriculum: CurriculumModule[]
   lab?: LabData | null
   latestSubmission?: LabSubmission | null
+  /** Prior tutor messages for this lesson, fed into the embedded Synapse panel. */
+  tutorInitialMessages?: { id?: string; role: string; content: string; createdAt?: Date }[]
 }
 
 const BASE_TABS = ['Overview', 'Transcript', 'Resources', 'Notes'] as const
@@ -60,6 +63,7 @@ export function LessonExperience({
   curriculum,
   lab = null,
   latestSubmission = null,
+  tutorInitialMessages,
 }: LessonExperienceProps) {
   const TABS = lab ? ALL_TABS : BASE_TABS
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
@@ -108,9 +112,9 @@ export function LessonExperience({
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1320px] flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+    <main className="mx-auto w-full max-w-[1440px] flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
       {/* Left: video + tabs + quiz */}
-      <div className="min-w-0 flex-1 flex flex-col gap-6 pb-28">
+      <div className="min-w-0 flex-1 flex flex-col gap-6">
         {/* Video */}
         <div className="relative rounded-2xl overflow-hidden glow-soft">
           {(lesson.video_source === 'youtube' ? lesson.youtube_id : lesson.mux_playback_id) ? (
@@ -274,8 +278,8 @@ export function LessonExperience({
         </section>
       </div>
 
-      {/* Right: course curriculum sidebar */}
-      <aside className="w-full flex-shrink-0 flex flex-col gap-4 lg:w-[360px] lg:sticky lg:top-6">
+      {/* Right: curriculum + embedded Synapse (Codecademy-style) */}
+      <aside className="w-full flex-shrink-0 flex flex-col gap-4 lg:w-[400px]">
         <div className="rounded-2xl border border-border bg-card p-5 flex flex-col gap-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -321,6 +325,15 @@ export function LessonExperience({
           modules={curriculum}
           currentLessonId={lesson.id}
           variant="compact"
+        />
+
+        {/* Embedded Synapse — always visible inside the right column. The
+            Expand button on the panel header opens a near-fullscreen overlay
+            for focused chatting. */}
+        <TutorPanel
+          mode="embedded"
+          lessonId={lesson.id}
+          initialMessages={tutorInitialMessages}
         />
       </aside>
     </main>
