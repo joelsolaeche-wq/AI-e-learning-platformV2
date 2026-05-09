@@ -108,7 +108,7 @@ export function LessonExperience({
   return (
     <main className="mx-auto w-full max-w-[1320px] flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
       {/* Left: video + tabs + quiz */}
-      <div className="min-w-0 flex-1 flex flex-col gap-6 pb-20">
+      <div className="min-w-0 flex-1 flex flex-col gap-6 pb-28">
         {/* Video */}
         <div className="relative rounded-2xl overflow-hidden glow-soft">
           {(lesson.video_source === 'youtube' ? lesson.youtube_id : lesson.mux_playback_id) ? (
