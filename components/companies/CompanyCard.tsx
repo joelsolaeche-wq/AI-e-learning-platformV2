@@ -37,7 +37,8 @@ export interface CompanyCardProps {
     logo_url?: string | null
   }
   cohortCount: number
-  learnerCount: number
+  /** Optional learner count badge — omit when not visible (RLS) or not relevant. */
+  learnerCount?: number | null
   href: string
 }
 
@@ -92,10 +93,12 @@ export function CompanyCard({ company, cohortCount, learnerCount, href }: Compan
             <GraduationCap size={13} />
             {cohortCount} cohort{cohortCount === 1 ? '' : 's'}
           </span>
-          <span className="inline-flex items-center gap-1.5">
-            <Users size={13} />
-            {learnerCount} learner{learnerCount === 1 ? '' : 's'}
-          </span>
+          {typeof learnerCount === 'number' && (
+            <span className="inline-flex items-center gap-1.5">
+              <Users size={13} />
+              {learnerCount} learner{learnerCount === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
       </div>
     </Link>

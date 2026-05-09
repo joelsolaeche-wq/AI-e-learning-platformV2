@@ -6,7 +6,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { Ring } from '@/components/ui/Ring'
 import {
   Clock, Flame, Sparkles, Play, ChevronRight, Trophy,
   Zap, Target, BookOpen, Award, Lock, Users,
@@ -14,6 +13,8 @@ import {
 import type { Database } from '@/lib/database.types'
 import { getLearnerStats } from '@/lib/learner-stats'
 import { JoinByCodeForm } from '@/components/JoinByCodeForm'
+import { CohortCard } from '@/components/cohorts/CohortCard'
+import { CompanyCard } from '@/components/companies/CompanyCard'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,16 +24,29 @@ type EnrollmentWithCohort = Pick<
   Database['public']['Tables']['enrollments']['Row'],
   'id' | 'cohort_id' | 'enrolled_at' | 'status'
 > & {
+  // company_id (added in 20260506000001) and image_url (added in 20260509000002)
+  // are not yet in the regenerated database.types.ts — declare the cohort
+  // shape inline.
   cohorts:
-    | (Pick<
-        Database['public']['Tables']['cohorts']['Row'],
-        'id' | 'title' | 'status' | 'starts_at' | 'ends_at' | 'course_id'
-      > & {
+    | {
+        id: string
+        title: string
+        status: string
+        starts_at: string
+        ends_at: string | null
+        course_id: string
+        company_id: string | null
+        image_url: string | null
         courses: Pick<
           Database['public']['Tables']['courses']['Row'],
           'id' | 'title' | 'slug'
         > | null
-      })
+        organizations: {
+          id: string
+          name: string
+          logo_url: string | null
+        } | null
+      }
     | null
 }
 
@@ -48,38 +62,13 @@ type PeerProfileRow = { id: string; full_name: string | null; email: string; rol
 // Helpers
 // ---------------------------------------------------------------------------
 
-const HUES: Array<{ from: string; to: string; symbol: string }> = [
-  { from: '#7C3AED', to: '#22D3EE', symbol: '✦' },
-  { from: '#06B6D4', to: '#10B981', symbol: '◐' },
-  { from: '#F472B6', to: '#FB923C', symbol: '◇' },
-  { from: '#FB7185', to: '#A78BFA', symbol: '◎' },
-  { from: '#34D399', to: '#60A5FA', symbol: '△' },
-  { from: '#FBBF24', to: '#F472B6', symbol: '◈' },
-]
-function hueFor(id: string) {
-  let h = 0
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
-  return HUES[h % HUES.length]
-}
-
-// Deterministic avatar color from user id
+// Deterministic avatar color from user id (used by the cohort roster only;
+// cohort/company cards use their own palettes inside CohortCard/CompanyCard).
 const PEER_COLORS = ['#7C3AED', '#22D3EE', '#F472B6', '#34D399', '#FBBF24', '#FB7185', '#60A5FA', '#FB923C']
 function colorFor(id: string) {
   let h = 0
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0
   return PEER_COLORS[h % PEER_COLORS.length]
-}
-
-function statusBadge(pct: number): { label: string; cls: string } {
-  if (pct === 0) return { label: 'Just started', cls: 'bg-blue-400/20 text-blue-300 border-blue-400/40' }
-  if (pct < 80) return { label: 'On track', cls: 'bg-emerald-400/20 text-emerald-300 border-emerald-400/40' }
-  if (pct < 100) return { label: 'Almost done', cls: 'bg-orange-400/20 text-orange-300 border-orange-400/40' }
-  return { label: 'Completed', cls: 'bg-primary/20 text-primary border-primary/40' }
-}
-
-function daysLeft(endsAt: string | null): number | null {
-  if (!endsAt) return null
-  return Math.max(0, Math.ceil((new Date(endsAt).getTime() - Date.now()) / 86_400_000))
 }
 
 function relativeDays(iso: string): string {
@@ -112,8 +101,9 @@ export default async function DashboardPage() {
     supabase
       .from('enrollments')
       .select(`id, cohort_id, enrolled_at, status,
-               cohorts ( id, title, status, starts_at, ends_at, course_id,
-                 courses ( id, title, slug ) )`)
+               cohorts ( id, title, status, starts_at, ends_at, course_id, company_id, image_url,
+                 courses ( id, title, slug ),
+                 organizations ( id, name, logo_url ) )`)
       .eq('user_id', user.id)
       .eq('status', 'active'),
     supabase
@@ -329,91 +319,82 @@ export default async function DashboardPage() {
           </div>
         </section>
       ) : (
-        <section className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-[18px] font-bold tracking-tight">Your cohorts</h2>
-            <div className="flex items-center gap-3">
-              <JoinByCodeForm />
-              <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
-                View all <ChevronRight size={14} />
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {enrollments.map((enrollment) => {
-              const cohort = enrollment.cohorts
-              if (!cohort) return null
-              const courseLessons = lessonsByCourse.get(cohort.course_id) ?? []
-              const totalLessons = courseLessons.length
-              const completedCount = courseLessons.filter((l) => completedLessonIds.has(l.id)).length
-              const pct = totalLessons > 0 ? Math.floor((completedCount / totalLessons) * 100) : 0
-              const hue = hueFor(cohort.id)
-              const badge = statusBadge(pct)
-              const days = daysLeft(cohort.ends_at)
-              const firstUnfinished = courseLessons.find((l) => !completedLessonIds.has(l.id)) ?? courseLessons[0]
-              const resumeHref = firstUnfinished
-                ? `/dashboard/lesson/${firstUnfinished.id}`
-                : `/catalog/${cohort.course_id}`
-              const isNew = Date.now() - new Date(enrollment.enrolled_at).getTime() < 48 * 60 * 60 * 1000
-
-              return (
-                <div
-                  key={enrollment.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all hover:-translate-y-0.5 hover:border-white/15 hover:shadow-[0_8px_28px_rgba(0,0,0,0.35)]"
-                >
-                  <div
-                    className="relative grid aspect-[16/7] place-items-center overflow-hidden"
-                    style={{ background: `linear-gradient(135deg, ${hue.from}, ${hue.to})` }}
-                  >
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.30),transparent_55%)]" />
-                    <span className="font-mono text-[52px] font-semibold text-white/90 drop-shadow-[0_0_24px_rgba(0,0,0,0.4)]">
-                      {hue.symbol}
-                    </span>
-                    {isNew && (
-                      <span className="absolute left-2.5 top-2.5 rounded-full bg-primary px-2.5 py-0.5 text-[10.5px] font-bold text-primary-foreground shadow-[0_0_12px_rgba(139,92,246,0.7)]">
-                        New
-                      </span>
-                    )}
-                    <span className={`absolute right-2.5 top-2.5 rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold backdrop-blur-md ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-1 flex-col gap-3 p-4">
-                    <div>
-                      <div className="text-[14.5px] font-bold tracking-tight leading-snug">
-                        {cohort.courses?.title ?? cohort.title}
-                      </div>
-                      <div className="mt-0.5 text-[12px] text-muted-foreground">
-                        {totalLessons} lessons
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <Ring pct={pct} size={52} stroke={5}>
-                        <span className="text-[11px] font-bold">{pct}%</span>
-                      </Ring>
-                      <div className="flex-1">
-                        <div className="text-[13px] font-semibold">{completedCount}/{totalLessons}</div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {days !== null ? `${days} days left` : 'No deadline'}
-                        </div>
-                      </div>
-                      <Link
-                        href={resumeHref}
-                        className="grid h-9 w-9 place-items-center rounded-[10px] border border-primary/30 bg-primary/15 text-primary transition-all hover:border-transparent hover:bg-primary hover:text-primary-foreground hover:shadow-[0_0_16px_rgba(139,92,246,0.5)]"
-                        aria-label="Resume course"
-                      >
-                        <Play size={14} fill="currentColor" />
-                      </Link>
-                    </div>
-                  </div>
+        <>
+          {/* Companies tier — only when learner spans multiple companies */}
+          {(() => {
+            const byCompany = new Map<string, { id: string; name: string; logo_url: string | null; cohortCount: number }>()
+            for (const e of enrollments) {
+              const org = e.cohorts?.organizations
+              if (!org) continue
+              const existing = byCompany.get(org.id)
+              if (existing) existing.cohortCount += 1
+              else byCompany.set(org.id, { id: org.id, name: org.name, logo_url: org.logo_url, cohortCount: 1 })
+            }
+            const companies = Array.from(byCompany.values())
+            if (companies.length <= 1) return null
+            return (
+              <section className="flex flex-col gap-3">
+                <h2 className="text-[16px] font-bold tracking-tight">Your companies</h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {companies.map((c) => (
+                    <CompanyCard
+                      key={c.id}
+                      company={{ id: c.id, name: c.name, logo_url: c.logo_url }}
+                      cohortCount={c.cohortCount}
+                      href={`/dashboard/team`}
+                    />
+                  ))}
                 </div>
-              )
-            })}
-          </div>
-        </section>
+              </section>
+            )
+          })()}
+
+          <section className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-[18px] font-bold tracking-tight">Your cohorts</h2>
+              <div className="flex items-center gap-3">
+                <JoinByCodeForm />
+                <Link href="/catalog" className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground">
+                  View all <ChevronRight size={14} />
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {enrollments.map((enrollment) => {
+                const cohort = enrollment.cohorts
+                if (!cohort) return null
+                const courseLessons = lessonsByCourse.get(cohort.course_id) ?? []
+                const totalLessons = courseLessons.length
+                const completedCount = courseLessons.filter((l) => completedLessonIds.has(l.id)).length
+                const firstUnfinished = courseLessons.find((l) => !completedLessonIds.has(l.id)) ?? courseLessons[0]
+                const resumeHref = firstUnfinished
+                  ? `/dashboard/lesson/${firstUnfinished.id}`
+                  : `/catalog/${cohort.course_id}`
+                const isNew = Date.now() - new Date(enrollment.enrolled_at).getTime() < 48 * 60 * 60 * 1000
+
+                return (
+                  <CohortCard
+                    key={enrollment.id}
+                    variant="learner"
+                    cohort={{
+                      id: cohort.id,
+                      title: cohort.courses?.title ?? cohort.title,
+                      status: cohort.status,
+                      starts_at: cohort.starts_at,
+                      ends_at: cohort.ends_at,
+                      image_url: cohort.image_url,
+                    }}
+                    subtitle={`${totalLessons} lessons`}
+                    progress={{ completed: completedCount, total: totalLessons }}
+                    isNew={isNew}
+                    primaryHref={resumeHref}
+                  />
+                )
+              })}
+            </div>
+          </section>
+        </>
       )}
 
       {/* ── Bottom row: Achievements + Cohort roster ─────────────── */}
