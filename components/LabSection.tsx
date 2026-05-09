@@ -80,6 +80,7 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
         throw new Error(errBody.error ?? `Submission failed (${res.status}).`)
       }
       setGitBranchUrl('')
+      setResetting(false)
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Submission failed.')
@@ -88,13 +89,13 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
     }
   }
 
-  // Show submission state if a submission exists. Pending/evaluating → status pill.
-  // Scored/failed → result UI.
   const showResultUi = latestSubmission && latestSubmission.status === 'scored'
   const showPendingUi =
     latestSubmission &&
     (latestSubmission.status === 'pending' || latestSubmission.status === 'evaluating')
   const showFailedUi = latestSubmission && latestSubmission.status === 'failed'
+  const showSubmitForm = !latestSubmission || resetting
+  const hasStateBlock = showResultUi || showPendingUi || showFailedUi
 
   return (
     <section className="flex flex-col gap-4">
@@ -128,8 +129,25 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
           </div>
         )}
 
-        {/* Rubric — always visible BEFORE submit */}
-        <div className="border-b border-border px-5 py-4">
+        {/* State block — only when a submission exists */}
+        {hasStateBlock && latestSubmission && (
+          <div className="border-b border-border bg-gradient-to-b from-primary/[0.07] via-primary/[0.02] to-transparent px-5 py-5">
+            {showResultUi && (
+              <ResultBlock
+                submission={latestSubmission}
+                rubric={lab.rubric_items}
+                onRetry={() => setResetting(true)}
+              />
+            )}
+            {showPendingUi && <PendingBlock submission={latestSubmission} />}
+            {showFailedUi && (
+              <FailedBlock submission={latestSubmission} onRetry={() => setResetting(true)} />
+            )}
+          </div>
+        )}
+
+        {/* Rubric — always visible reference */}
+        <div className={'px-5 py-4 ' + (showSubmitForm ? 'pb-6' : '')}>
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground mb-3">
             How you&apos;ll be graded
           </h3>
@@ -159,59 +177,51 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
             ))}
           </ul>
         </div>
-
-        {/* State block: result OR pending OR failed OR submit form */}
-        <div className="px-5 py-4">
-          {showResultUi && latestSubmission ? (
-            <ResultBlock submission={latestSubmission} rubric={lab.rubric_items} onRetry={() => setResetting(true)} />
-          ) : showPendingUi && latestSubmission ? (
-            <PendingBlock submission={latestSubmission} />
-          ) : showFailedUi && latestSubmission ? (
-            <FailedBlock
-              submission={latestSubmission}
-              onRetry={() => setResetting(true)}
-            />
-          ) : null}
-
-          {(!latestSubmission || resetting) && (
-            <div className="space-y-3">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                Submit your repo
-              </h3>
-              <div className="flex items-center gap-2">
-                <div className="grid h-9 w-9 place-items-center rounded-lg border border-input bg-secondary/40 text-muted-foreground">
-                  <GitBranch size={14} />
-                </div>
-                <input
-                  type="url"
-                  value={githubUrl}
-                  onChange={(e) => setGitBranchUrl(e.target.value)}
-                  placeholder="https://github.com/owner/repo"
-                  className="h-9 flex-1 rounded-lg border border-input bg-transparent px-3 text-[13.5px] outline-none focus:border-primary/60"
-                />
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={submitting}
-                  className="inline-flex h-9 items-center gap-2 rounded-[10px] bg-gradient-to-b from-primary to-primary/75 px-4 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
-                >
-                  {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
-                  {submitting ? 'Submitting…' : 'Submit'}
-                </button>
-              </div>
-              {error && (
-                <p className="flex items-center gap-1.5 text-[12.5px] text-destructive">
-                  <AlertCircle size={12} />
-                  {error}
-                </p>
-              )}
-              <p className="text-[11.5px] text-muted-foreground">
-                Public GitHub repo only. Evaluation is automatic and may take 30–60 seconds.
-              </p>
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Sticky submit footer — pinned to viewport while reading brief + rubric */}
+      {showSubmitForm && (
+        <div className="sticky bottom-4 z-20 mt-2">
+          <div className="rounded-2xl border border-primary/40 bg-card/85 backdrop-blur-md p-4 sm:p-5 ring-1 ring-primary/20 shadow-[0_12px_40px_-12px_color-mix(in_oklab,var(--primary)_55%,transparent)]">
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary/20 text-primary">
+                <GitBranch size={15} />
+              </div>
+              <h3 className="text-[15.5px] font-semibold tracking-tight">Submit your repository</h3>
+            </div>
+            <p className="text-[12.5px] text-muted-foreground mb-3 ml-[42px]">
+              Paste a public GitHub URL — the AI grades it against the rubric above.
+            </p>
+            <div className="flex flex-col sm:flex-row items-stretch gap-2">
+              <input
+                type="url"
+                value={githubUrl}
+                onChange={(e) => setGitBranchUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                className="h-11 flex-1 rounded-xl border border-input bg-background/60 px-4 text-[14px] outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
+              />
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-primary to-primary/75 px-6 text-[14px] font-semibold text-primary-foreground glow-primary shadow-lg shadow-primary/25 transition-transform hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0"
+              >
+                {submitting ? <Loader2 size={14} className="animate-spin" /> : null}
+                {submitting ? 'Submitting…' : 'Submit repository'}
+              </button>
+            </div>
+            {error && (
+              <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-destructive">
+                <AlertCircle size={12} />
+                {error}
+              </p>
+            )}
+            <p className="mt-2 text-[11.5px] text-muted-foreground">
+              Public GitHub repo only · evaluation takes 30–60 seconds
+            </p>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
