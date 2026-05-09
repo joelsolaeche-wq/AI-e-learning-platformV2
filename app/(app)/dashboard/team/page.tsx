@@ -74,40 +74,124 @@ export default async function TeamPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // Own profile + own learner stats
+  // Own profile + own learner stats. We fetch enrollments without an embed
+  // because PostgREST resolves `enrollments → cohorts(...)` as ambiguous in
+  // this schema (returns 300 Multiple Choices). Explicit per-table fetches
+  // follow.
   const [profileResult, stats, ownEnrollmentsResult] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, full_name, email, org_id, role, organizations(name, slug)')
+      .select('id, full_name, email, org_id, role')
       .eq('id', user.id)
       .maybeSingle(),
     getLearnerStats(supabase, user.id),
     supabase
       .from('enrollments')
-      .select(`user_id, enrolled_at, cohort_id,
-               cohorts ( id, title, starts_at, ends_at, status, course_id,
-                 courses ( id, title ) )`)
+      .select('user_id, enrolled_at, cohort_id')
       .eq('user_id', user.id)
       .eq('status', 'active'),
   ])
 
-  const profile = profileResult.data as unknown as ProfileRow | null
+  const baseProfile = profileResult.data as { id: string; full_name: string | null; email: string; org_id: string | null; role: string } | null
+
+  // Pull the user's organization (if any) explicitly. Returns null when
+  // org_id is null OR when RLS hides the row.
+  let ownOrg: { name: string; slug: string } | null = null
+  if (baseProfile?.org_id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: orgData } = await (supabase as any)
+      .from('organizations')
+      .select('name, slug')
+      .eq('id', baseProfile.org_id)
+      .maybeSingle()
+    ownOrg = orgData ? { name: orgData.name as string, slug: orgData.slug as string } : null
+  }
+
+  const profile: ProfileRow | null = baseProfile
+    ? { ...baseProfile, organizations: ownOrg }
+    : null
   const orgName = profile?.organizations?.name ?? 'Your Cohort'
 
-  const ownEnrollments = (ownEnrollmentsResult.data ?? []) as unknown as EnrollmentJoined[]
-  const userCohortIds = ownEnrollments.map((e) => e.cohort_id)
+  type RawEnrollmentRow = { user_id: string; enrolled_at: string; cohort_id: string }
+  const ownEnrollmentsRaw = (ownEnrollmentsResult.data ?? []) as RawEnrollmentRow[]
+  if (ownEnrollmentsResult.error) {
+    const e = ownEnrollmentsResult.error as {
+      message?: string; code?: string; details?: string; hint?: string
+    }
+    console.error('[team] own enrollments query failed:', {
+      message: e.message, code: e.code, details: e.details, hint: e.hint,
+    })
+  }
+  const userCohortIds = ownEnrollmentsRaw.map((e) => e.cohort_id)
 
-  // Cohort-mate enrollments (RLS allows for shared cohorts)
+  // Fetch the cohorts + their courses explicitly.
+  type CohortRowMin = {
+    id: string
+    title: string
+    starts_at: string
+    ends_at: string | null
+    status: string
+    course_id: string
+  }
+  type CourseRowMin = { id: string; title: string }
+  const cohortMap = new Map<string, CohortRowMin>()
+  const courseMap = new Map<string, CourseRowMin>()
+  if (userCohortIds.length > 0) {
+    const { data: rawCohorts } = await supabase
+      .from('cohorts')
+      .select('id, title, starts_at, ends_at, status, course_id')
+      .in('id', userCohortIds)
+    for (const c of (rawCohorts ?? []) as CohortRowMin[]) cohortMap.set(c.id, c)
+
+    const courseIds = Array.from(
+      new Set(Array.from(cohortMap.values()).map((c) => c.course_id).filter(Boolean)),
+    )
+    if (courseIds.length > 0) {
+      const { data: rawCourses } = await supabase
+        .from('courses')
+        .select('id, title')
+        .in('id', courseIds)
+      for (const c of (rawCourses ?? []) as CourseRowMin[]) courseMap.set(c.id, c)
+    }
+  }
+
+  // Hydrate own enrollments into the EnrollmentJoined shape downstream code
+  // expects.
+  const hydrate = (e: RawEnrollmentRow): EnrollmentJoined | null => {
+    const cohort = cohortMap.get(e.cohort_id)
+    if (!cohort) return null
+    const course = courseMap.get(cohort.course_id) ?? null
+    return {
+      user_id: e.user_id,
+      enrolled_at: e.enrolled_at,
+      cohort_id: e.cohort_id,
+      cohorts: {
+        id: cohort.id,
+        title: cohort.title,
+        starts_at: cohort.starts_at,
+        ends_at: cohort.ends_at,
+        status: cohort.status,
+        course_id: cohort.course_id,
+        courses: course,
+      },
+    }
+  }
+
+  const ownEnrollments: EnrollmentJoined[] = ownEnrollmentsRaw
+    .map(hydrate)
+    .filter((e): e is EnrollmentJoined => e !== null)
+
+  // Cohort-mate enrollments (RLS allows for shared cohorts).
   let peerEnrollments: EnrollmentJoined[] = []
   if (userCohortIds.length > 0) {
     const { data: peerData } = await supabase
       .from('enrollments')
-      .select(`user_id, enrolled_at, cohort_id,
-               cohorts ( id, title, starts_at, ends_at, status, course_id,
-                 courses ( id, title ) )`)
+      .select('user_id, enrolled_at, cohort_id')
       .in('cohort_id', userCohortIds)
       .order('enrolled_at', { ascending: true })
-    peerEnrollments = (peerData ?? []) as unknown as EnrollmentJoined[]
+    peerEnrollments = ((peerData ?? []) as RawEnrollmentRow[])
+      .map(hydrate)
+      .filter((e): e is EnrollmentJoined => e !== null)
   }
 
   // Group enrollments by user → primary cohort = most recent enrollment
