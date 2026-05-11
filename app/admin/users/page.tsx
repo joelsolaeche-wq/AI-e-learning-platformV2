@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createClient } from '@/lib/supabase/server'
 import { UsersTable } from '@/components/admin/UsersTable'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 const PAGE_SIZE = 20
 
@@ -12,8 +14,25 @@ type SearchParams = Promise<{
 }>
 
 export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
+  // Admin-only gate. Middleware admits company_owner into /admin/* but this
+  // page lists every profile via the service-role client (RLS bypassed),
+  // which is admin-only data. Without this check, a company_owner could
+  // browse here and (via the search filter below) enumerate platform admins.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: callerProfile } = await (supabase as any)
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (callerProfile?.role !== 'admin') redirect('/admin')
+
   const params = await searchParams
-  const q = params.q?.trim() ?? ''
+  // Strip PostgREST metacharacters from the search term before interpolating
+  // into the `.or()` filter below. Comma, parens, and asterisk delimit
+  // filter clauses; un-sanitized they let a caller break out of the ilike
+  // wildcard and inject extra predicates (e.g. `?q=,role.eq.admin` would
+  // become `email.ilike.%,role.eq.admin%` — an OR with a forged predicate).
+  const q = (params.q?.trim() ?? '').replace(/[,()*]/g, '')
   const roleFilter = params.role ?? ''
   const activeFilter = params.active ?? ''
   const page = Math.max(1, parseInt(params.page ?? '1', 10))
