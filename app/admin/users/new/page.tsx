@@ -1,9 +1,22 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { NewUserForm } from '@/components/admin/NewUserForm'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export default async function NewUserPage() {
+  // Admin-only: middleware lets company_owner reach /admin/* too, but this
+  // global new-user form exposes every role. Company owners create members
+  // via /admin/companies/[companyId]/members/new (locked to role=learner).
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/auth/login')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: callerProfile } = await (supabase as any)
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (callerProfile?.role !== 'admin') redirect('/admin')
+
   const admin = createAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: companies } = await (admin as any)

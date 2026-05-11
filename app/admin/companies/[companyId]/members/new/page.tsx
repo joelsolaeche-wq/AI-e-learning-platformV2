@@ -9,8 +9,6 @@ import { ChevronLeft } from 'lucide-react'
 
 const initialState: AdminActionResult = { error: null }
 
-const ROLES = ['learner', 'instructor', 'company_owner']
-
 export default function NewCompanyMemberPage({
   params,
 }: {
@@ -38,6 +36,11 @@ export default function NewCompanyMemberPage({
 
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="org_id" value={companyId} />
+        <input type="hidden" name="role" value="learner" />
+
+        <p className="rounded-lg border border-border bg-secondary/50 px-3 py-2 text-[13px] text-muted-foreground">
+          New members are added as <span className="font-medium text-foreground">learners</span>. Enroll them in a cohort to grant course access.
+        </p>
 
         <div className="space-y-1.5">
           <label className="text-[13px] font-medium" htmlFor="full_name">Full name</label>
@@ -64,20 +67,6 @@ export default function NewCompanyMemberPage({
             className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/30 transition-all"
             placeholder="Min 8 characters"
           />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="text-[13px] font-medium">Role</label>
-          <div className="flex gap-2">
-            {ROLES.map((role) => (
-              <label key={role} className="flex-1 cursor-pointer">
-                <input type="radio" name="role" value={role} defaultChecked={role === 'learner'} className="sr-only peer" />
-                <div className="rounded-xl border border-border bg-card px-3 py-2 text-center text-[13px] font-medium text-muted-foreground capitalize transition-all peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:text-foreground hover:text-foreground">
-                  {role === 'company_owner' ? 'Owner' : role}
-                </div>
-              </label>
-            ))}
-          </div>
         </div>
 
         {state.error && (
