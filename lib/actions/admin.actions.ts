@@ -200,7 +200,15 @@ export async function createUserAction(
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!email || !EMAIL_RE.test(email)) return { error: 'Valid email is required.' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
-  if (!['learner', 'instructor', 'admin', 'company_owner'].includes(role)) return { error: 'Invalid role.' }
+
+  // Role-assignment matrix: admins can create users of any role; company_owners
+  // can only create learners. Without this gate, a company_owner could submit
+  // role='admin' and self-elevate to platform admin (middleware /admin gate is
+  // role-only, no org filter).
+  const allowedRoles = callerProfile.role === 'admin'
+    ? ['learner', 'instructor', 'admin', 'company_owner']
+    : ['learner']
+  if (!allowedRoles.includes(role)) return { error: 'You are not allowed to assign this role.' }
 
   const admin = createAdminClient()
 
