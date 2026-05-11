@@ -126,6 +126,9 @@ export async function POST(request: Request) {
     cohortIds.push(...((cohortData ?? []) as unknown as CohortRow[]).map((r) => r.id))
   }
 
+  // limit(1) is load-bearing: a learner may hold multiple active enrollments
+  // for the same course (different cohorts). Without it, maybeSingle() errors
+  // on >1 row and returns data:null → spurious 403.
   type EnrollmentRow = { id: string; cohort_id: string }
   const { data: enrollment } =
     cohortIds.length > 0
@@ -135,6 +138,7 @@ export async function POST(request: Request) {
           .eq('user_id', user.id)
           .eq('status', 'active')
           .in('cohort_id', cohortIds)
+          .limit(1)
           .maybeSingle()
       : { data: null }
 
