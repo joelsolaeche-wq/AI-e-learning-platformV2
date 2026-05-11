@@ -159,6 +159,19 @@ export async function archiveCohortAction(cohortId: string): Promise<CohortActio
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
+
+  // company_owner may only archive cohorts that belong to their company.
+  // Without this gate, a company_owner could pass any cohortId and silently
+  // archive a competitor's active cohort (cross-tenant write via service-role).
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: existing } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (existing?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('cohorts')
@@ -184,6 +197,13 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
     .single()
 
   if (fetchErr || !original) return { error: 'Cohort not found.' }
+
+  // company_owner may only clone cohorts that belong to their company.
+  // Without this gate, a company_owner could clone a competitor's cohort
+  // (including its curriculum) into a new draft, exfiltrating course design.
+  if (caller.role === 'company_owner' && original.company_id !== caller.orgId) {
+    return { error: 'Unauthorized: cohort does not belong to your company.' }
+  }
 
   const newStarts = new Date()
   newStarts.setDate(newStarts.getDate() + 7)
@@ -214,6 +234,24 @@ export async function unenrollUserAction(enrollmentId: string, cohortId: string)
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
+
+  // company_owner may only unenroll users from cohorts of their own company.
+  // We resolve the enrollment's real cohort_id from the DB rather than trusting
+  // the cohortId argument — otherwise a caller could pass any cohortId they own
+  // alongside an enrollmentId from a different tenant and bypass the check.
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: enrollment } = await (admin as any)
+      .from('enrollments').select('cohort_id').eq('id', enrollmentId).single()
+    if (!enrollment) return { error: 'Enrollment not found.' }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: cohort } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', enrollment.cohort_id).single()
+    if (cohort?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: enrollment does not belong to your company.' }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any).from('enrollments').delete().eq('id', enrollmentId)
   if (error) return { error: error.message }
@@ -230,6 +268,17 @@ export async function enrollUserAction(
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
+
+  // company_owner may only enroll users into cohorts of their own company.
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: cohort } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (cohort?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (admin as any)
     .from('enrollments')
@@ -251,6 +300,18 @@ export async function bulkEnrollAction(
   if (!caller) return { enrolled: 0, skipped: 0, errors: ['Unauthorized.'] }
 
   const admin = createAdminClient()
+
+  // company_owner may only bulk-enroll into cohorts of their own company.
+  // Resolve once before the loop — no need to re-check per email.
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: cohort } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (cohort?.company_id !== caller.orgId) {
+      return { enrolled: 0, skipped: 0, errors: ['Unauthorized: cohort does not belong to your company.'] }
+    }
+  }
+
   let enrolled = 0
   let skipped = 0
   const errors: string[] = []
@@ -304,6 +365,18 @@ export async function generateInvitationCodeAction(
     : null
 
   const admin = createAdminClient()
+
+  // company_owner may only generate invitations for cohorts of their own
+  // company. Without this gate, a company_owner could mint an invitation
+  // code for a competitor's cohort and share it, enrolling arbitrary users.
+  if (caller.role === 'company_owner') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: cohort } = await (admin as any)
+      .from('cohorts').select('company_id').eq('id', cohortId).single()
+    if (cohort?.company_id !== caller.orgId) {
+      return { error: 'Unauthorized: cohort does not belong to your company.' }
+    }
+  }
 
   // Retry up to 5 times on unique code collision
   for (let attempt = 0; attempt < 5; attempt++) {
