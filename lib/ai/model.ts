@@ -102,6 +102,16 @@ export async function generateJSON<T>(opts: {
   system: string
   prompt: string
   maxTokens: number
+  /**
+   * Optional file attachments rendered as FileParts alongside the prompt
+   * text. Used for PDF lab submissions; the model reads them natively
+   * (no extraction library needed).
+   */
+  attachments?: Array<{
+    mimeType: string
+    data: Uint8Array | ArrayBuffer | string
+    filename?: string
+  }>
 }): Promise<T> {
   const fullSystem = `${opts.system}
 
@@ -114,12 +124,33 @@ OUTPUT FORMAT — CRITICAL:
 SCHEMA:
 ${opts.schemaHint}`
 
-  const result = await streamText({
-    model: getAIModel(),
-    maxTokens: opts.maxTokens,
-    system: fullSystem,
-    prompt: opts.prompt,
-  })
+  const hasAttachments = !!opts.attachments && opts.attachments.length > 0
+  const result = hasAttachments
+    ? await streamText({
+        model: getAIModel(),
+        maxTokens: opts.maxTokens,
+        system: fullSystem,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: opts.prompt },
+              ...opts.attachments!.map((a) => ({
+                type: 'file' as const,
+                data: a.data,
+                mimeType: a.mimeType,
+                filename: a.filename,
+              })),
+            ],
+          },
+        ],
+      })
+    : await streamText({
+        model: getAIModel(),
+        maxTokens: opts.maxTokens,
+        system: fullSystem,
+        prompt: opts.prompt,
+      })
 
   let text = ''
   for await (const delta of result.textStream) {

@@ -155,12 +155,17 @@ export async function POST(request: Request) {
           .eq('course_id', courseId)
         const cohortIds = ((cohortRows ?? []) as unknown as CohortRow[]).map((r) => r.id)
         if (cohortIds.length === 0) return { data: null, error: null }
+        // limit(1) is load-bearing: a learner may hold multiple active
+        // enrollments for the same course (different cohorts). Without it,
+        // maybeSingle() errors on >1 row, the cohort_id falls back to null,
+        // and the attempt is recorded without its cohort linkage.
         return supabase
           .from('enrollments')
           .select('cohort_id')
           .eq('user_id', user.id)
           .eq('status', 'active')
           .in('cohort_id', cohortIds)
+          .limit(1)
           .maybeSingle()
       })()
     : { data: null, error: null }

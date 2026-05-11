@@ -7,6 +7,7 @@ import { CohortEnrollmentPanel } from '@/components/admin/CohortEnrollmentPanel'
 import { CohortInvitationPanel } from '@/components/admin/CohortInvitationPanel'
 import { CohortActionsBar } from '@/components/admin/CohortActionsBar'
 import { CohortTabs } from '@/components/admin/CohortTabs'
+import { CohortChatPlaceholder } from '@/components/cohorts/CohortChatPlaceholder'
 
 export default async function CompanyCohortEditPage({
   params,
@@ -119,6 +120,11 @@ export default async function CompanyCohortEditPage({
             id: 'invitations',
             label: 'Invitation codes',
             content: <CohortInvitationPanel cohortId={cohortId} invitations={invitationsRes.data ?? []} />,
+          },
+          {
+            id: 'chat',
+            label: 'Chat',
+            content: <CohortChatPlaceholder cohortTitle={cohortRes.data.title} />,
           },
         ]}
       />

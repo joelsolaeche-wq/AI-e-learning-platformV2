@@ -4,7 +4,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
 import type { Message } from 'ai'
-import { TutorPanel } from '@/components/TutorPanel'
 import { LessonExperience } from '@/components/LessonExperience'
 import type { CurriculumModule } from '@/components/CurriculumTree'
 
@@ -22,7 +21,11 @@ type LessonRow = Pick<
   | 'transcript'
   | 'video_source'
   | 'youtube_id'
->
+> & {
+  // transcript_segments was added in 20260509000001; not yet in regenerated
+  // database.types.ts, so widen the row type here.
+  transcript_segments: { start: number; text: string }[] | null
+}
 
 type ProgressRow = Pick<
   Database['public']['Tables']['lesson_progress']['Row'],
@@ -91,7 +94,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     supabase
       .from('lessons')
       .select(
-        'id, title, module_id, mux_playback_id, duration_seconds, transcript, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
+        'id, title, module_id, mux_playback_id, duration_seconds, transcript, transcript_segments, video_source, youtube_id, modules(id, title, course_id, courses(id, title))',
       )
       .eq('id', lessonId)
       .single(),
@@ -174,7 +177,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
   type SubmissionRow = {
     id: string
     status: 'pending' | 'evaluating' | 'scored' | 'failed'
-    github_url: string
+    submission_type: 'github' | 'pdf' | 'text'
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
     overall_stars: number | null
     total_score: number
     max_score: number
@@ -208,7 +214,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
   let latestSubmission: {
     id: string
     status: 'pending' | 'evaluating' | 'scored' | 'failed'
-    github_url: string
+    submission_type: 'github' | 'pdf' | 'text'
+    github_url: string | null
+    pdf_path: string | null
+    text_content: string | null
     overall_stars: number | null
     total_score: number
     max_score: number
@@ -223,7 +232,7 @@ export default async function LessonPage({ params }: LessonPageProps) {
     const subResult = await (admin as any)
       .from('lab_submissions')
       .select(
-        'id, status, github_url, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',
+        'id, status, submission_type, github_url, pdf_path, text_content, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',
       )
       .eq('lab_id', lab.id)
       .eq('user_id', user.id)
@@ -236,7 +245,10 @@ export default async function LessonPage({ params }: LessonPageProps) {
       latestSubmission = {
         id: subRow.id,
         status: subRow.status,
+        submission_type: subRow.submission_type,
         github_url: subRow.github_url,
+        pdf_path: subRow.pdf_path,
+        text_content: subRow.text_content,
         overall_stars: subRow.overall_stars,
         total_score: subRow.total_score,
         max_score: subRow.max_score,
@@ -300,19 +312,17 @@ export default async function LessonPage({ params }: LessonPageProps) {
     }))
 
   return (
-    <>
-      <LessonExperience
-        lesson={lesson}
-        moduleTitle={moduleTitle}
-        courseTitle={courseTitle}
-        resumePosition={resumePosition}
-        isLessonComplete={isLessonComplete}
-        clientQuestions={clientQuestions}
-        curriculum={curriculum}
-        lab={lab}
-        latestSubmission={latestSubmission}
-      />
-      <TutorPanel lessonId={lesson.id} initialMessages={initialMessages} />
-    </>
+    <LessonExperience
+      lesson={lesson}
+      moduleTitle={moduleTitle}
+      courseTitle={courseTitle}
+      resumePosition={resumePosition}
+      isLessonComplete={isLessonComplete}
+      clientQuestions={clientQuestions}
+      curriculum={curriculum}
+      lab={lab}
+      latestSubmission={latestSubmission}
+      tutorInitialMessages={initialMessages}
+    />
   )
 }
