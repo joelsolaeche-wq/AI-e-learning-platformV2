@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { LAB_PDF_MAX_BYTES } from '@/lib/constants/limits'
+import { uploadLabPdf } from '@/lib/storage/lab-uploads'
 
 // POST /api/labs/upload — multipart form-data with a single `file` field.
 // Verifies the caller is logged in, rejects non-PDFs, and stores the file at
@@ -38,30 +38,15 @@ export async function POST(request: Request) {
     )
   }
 
-  // Slug the filename so paths stay predictable. Keep the original extension
-  // (already validated as .pdf above).
-  const safeName = file.name
-    .replace(/\.pdf$/i, '')
-    .replace(/[^A-Za-z0-9_.-]+/g, '-')
-    .slice(0, 80)
-  const path = `${user.id}/${Date.now()}-${safeName || 'submission'}.pdf`
-
-  // Use service role — the storage RLS policy permits inserts where the path
-  // prefix matches auth.uid(), but the server route already enforces that
-  // explicitly above. Service role keeps this resilient even if storage RLS
-  // is later tightened.
-  const admin = createAdminClient()
   const arrayBuffer = await file.arrayBuffer()
-  const { error } = await admin.storage
-    .from('lab-submissions')
-    .upload(path, new Uint8Array(arrayBuffer), {
-      contentType: 'application/pdf',
-      upsert: false,
-    })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  const result = await uploadLabPdf({
+    userId: user.id,
+    bytes: new Uint8Array(arrayBuffer),
+    filename: file.name,
+  })
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 500 })
   }
 
-  return NextResponse.json({ path, sizeBytes: file.size, filename: file.name })
+  return NextResponse.json({ path: result.path, sizeBytes: file.size, filename: file.name })
 }
