@@ -1,9 +1,10 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
+import { assertAdmin, assertAdminOrOwner } from '@/lib/auth/guards'
+import { ALL_ROLES } from '@/lib/auth/roles'
 
 export type AdminActionResult = { error: string | null; success?: boolean }
 
@@ -11,37 +12,6 @@ export type ImportResult = {
   created: number
   skipped: number
   errors: Array<{ row: number; email: string; reason: string }>
-}
-
-async function assertAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  return profile?.role === 'admin' ? user : null
-}
-
-async function assertAdminOrOwner() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role, org_id')
-    .eq('id', user.id)
-    .single()
-
-  if (!['admin', 'company_owner'].includes(profile?.role)) return null
-  return { user, role: profile.role as string, orgId: profile.org_id as string | null }
 }
 
 export type BulkMembersResult = { assigned: number; skipped: number; errors: string[] }
@@ -151,7 +121,7 @@ export async function adminUpdateUserAction(
   const orgId = (formData.get('org_id') as string | null) || null
 
   if (!userId) return { error: 'User ID is required.' }
-  if (!['learner', 'instructor', 'admin', 'company_owner'].includes(role)) return { error: 'Invalid role.' }
+  if (!(ALL_ROLES as readonly string[]).includes(role)) return { error: 'Invalid role.' }
   if (fullName && fullName.length > 100) return { error: 'Name cannot exceed 100 characters.' }
   if (role === 'company_owner' && !orgId) return { error: 'A company is required for the Company Owner role.' }
 
@@ -178,16 +148,12 @@ export async function createUserAction(
   formData: FormData,
 ): Promise<AdminActionResult> {
   // company_owner may also create users (scoped to their own org_id via the form hidden input)
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  if (!authUser) return { error: 'Unauthorized.' }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: callerProfile } = await (supabase as any)
-    .from('profiles').select('role, org_id').eq('id', authUser.id).single()
-  if (!['admin', 'company_owner'].includes(callerProfile?.role)) return { error: 'Unauthorized.' }
+  const caller = await assertAdminOrOwner()
+  if (!caller) return { error: 'Unauthorized.' }
+
   // Prevent company_owner from creating users outside their own company
   const requestedOrgId = (formData.get('org_id') as string | null) || null
-  if (callerProfile?.role === 'company_owner' && requestedOrgId !== callerProfile?.org_id) {
+  if (caller.role === 'company_owner' && requestedOrgId !== caller.orgId) {
     return { error: 'Unauthorized: you can only add members to your own company.' }
   }
 
@@ -205,9 +171,7 @@ export async function createUserAction(
   // can only create learners. Without this gate, a company_owner could submit
   // role='admin' and self-elevate to platform admin (middleware /admin gate is
   // role-only, no org filter).
-  const allowedRoles = callerProfile.role === 'admin'
-    ? ['learner', 'instructor', 'admin', 'company_owner']
-    : ['learner']
+  const allowedRoles: readonly string[] = caller.role === 'admin' ? ALL_ROLES : ['learner']
   if (!allowedRoles.includes(role)) return { error: 'You are not allowed to assign this role.' }
 
   const admin = createAdminClient()

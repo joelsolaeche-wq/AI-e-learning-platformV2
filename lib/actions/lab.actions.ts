@@ -1,8 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { assertAdmin } from '@/lib/auth/guards'
 
 export type LabActionResult = { error: string | null; success?: boolean }
 
@@ -10,21 +10,6 @@ export type RubricItemInput = {
   criterion: string
   description: string
   weight: number
-}
-
-async function assertAdmin() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
-  return profile?.role === 'admin' ? user : null
 }
 
 // Save the whole lab form in one shot:

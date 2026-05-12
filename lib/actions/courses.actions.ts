@@ -1,23 +1,10 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { assertAdminOrInstructor } from '@/lib/auth/guards'
 
 export type CourseActionResult = { error: string | null; success?: boolean; id?: string }
-
-async function assertAdminOrInstructor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-  return ['admin', 'instructor'].includes(profile?.role) ? user : null
-}
 
 export async function createCourseAction(
   _prevState: CourseActionResult,
