@@ -69,8 +69,7 @@ export default async function DashboardCompanyPage({
   if (cohortsInCompany.length === 0) notFound()
 
   // 3. Fetch the organization for the header.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: orgData } = await (supabase as any)
+  const { data: orgData } = await supabase
     .from('organizations')
     .select('id, name, logo_url, description')
     .eq('id', companyId)

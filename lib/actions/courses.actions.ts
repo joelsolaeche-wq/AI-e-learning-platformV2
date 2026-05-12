@@ -25,8 +25,7 @@ export async function createCourseAction(
     + '-' + Math.random().toString(36).slice(2, 7)
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('courses')
     .insert({
       title,
@@ -63,8 +62,7 @@ export async function updateCourseAction(
   if (!['draft', 'published', 'archived'].includes(status)) return { error: 'Invalid status.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('courses')
     .update({
       title,
@@ -89,8 +87,7 @@ export async function duplicateCourseAction(courseId: string): Promise<CourseAct
   const admin = createAdminClient()
 
   // Fetch original course
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: original, error: fetchErr } = await (admin as any)
+  const { data: original, error: fetchErr } = await admin
     .from('courses')
     .select('title, description, thumbnail_url')
     .eq('id', courseId)
@@ -102,8 +99,7 @@ export async function duplicateCourseAction(courseId: string): Promise<CourseAct
   const newSlug = newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     + '-' + Math.random().toString(36).slice(2, 7)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: newCourse, error: insertErr } = await (admin as any)
+  const { data: newCourse, error: insertErr } = await admin
     .from('courses')
     .insert({
       title: newTitle,
@@ -119,16 +115,14 @@ export async function duplicateCourseAction(courseId: string): Promise<CourseAct
   if (insertErr) return { error: insertErr.message }
 
   // Duplicate modules and lessons
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: modules } = await (admin as any)
+  const { data: modules } = await admin
     .from('modules')
     .select('id, title, position')
     .eq('course_id', courseId)
     .order('position')
 
   for (const mod of modules ?? []) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: newMod } = await (admin as any)
+    const { data: newMod } = await admin
       .from('modules')
       .insert({ course_id: newCourse.id, title: mod.title, position: mod.position })
       .select('id')
@@ -136,16 +130,14 @@ export async function duplicateCourseAction(courseId: string): Promise<CourseAct
 
     if (!newMod) continue
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: lessons } = await (admin as any)
+    const { data: lessons } = await admin
       .from('lessons')
       .select('title, position, mux_playback_id, duration_seconds, transcript')
       .eq('module_id', mod.id)
       .order('position')
 
     for (const lesson of lessons ?? []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (admin as any)
+      await admin
         .from('lessons')
         .insert({
           module_id: newMod.id,
@@ -171,8 +163,7 @@ export async function createModuleAction(
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('modules')
     .insert({ course_id: courseId, title: title.trim(), position })
     .select('id')
@@ -192,8 +183,7 @@ export async function updateModuleAction(
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('modules')
     .update({ title: title.trim() })
     .eq('id', moduleId)
@@ -208,8 +198,7 @@ export async function deleteModuleAction(moduleId: string, courseId: string): Pr
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('modules')
     .delete()
     .eq('id', moduleId)
@@ -229,8 +218,7 @@ export async function createLessonAction(
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('lessons')
     .insert({ module_id: moduleId, title: title.trim(), position })
     .select('id')
@@ -264,8 +252,7 @@ export async function updateLessonAction(
   if (!title) return { error: 'Title is required.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('lessons')
     .update({ title, mux_playback_id, duration_seconds, transcript, content_type, document_url, slides_url, notebook_url })
     .eq('id', lessonId)
@@ -280,8 +267,7 @@ export async function deleteLessonAction(lessonId: string, courseId: string): Pr
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('lessons')
     .delete()
     .eq('id', lessonId)

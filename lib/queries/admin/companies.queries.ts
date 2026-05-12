@@ -130,8 +130,7 @@ export async function getCompanyForWorkspace(companyId: string): Promise<Company
   if (profile.role === 'company_owner' && profile.org_id !== companyId) return 'notfound'
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: company } = await (admin as any)
+  const { data: company } = await admin
     .from('organizations')
     .select('id, name')
     .eq('id', companyId)
@@ -146,7 +145,6 @@ export async function getCompanyForWorkspace(companyId: string): Promise<Company
 // ──────────────────────────────────────────────────────────────────────
 
 export type CompanyOverview = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   company: any
   cohortCount: number
   courseCount: number
@@ -160,14 +158,10 @@ export async function getCompanyOverview(companyId: string): Promise<CompanyOver
 
   const admin = createAdminClient()
   const [companyRes, cohortsRes, coursesRes, membersRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('*').eq('id', companyId).single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohorts').select('id', { count: 'exact', head: true }).eq('company_id', companyId).neq('status', 'cancelled'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('course_companies').select('course_id', { count: 'exact', head: true }).eq('company_id', companyId),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('profiles').select('id', { count: 'exact', head: true }).eq('org_id', companyId),
+    admin.from('organizations').select('*').eq('id', companyId).single(),
+    admin.from('cohorts').select('id', { count: 'exact', head: true }).eq('company_id', companyId).neq('status', 'cancelled'),
+    admin.from('course_companies').select('course_id', { count: 'exact', head: true }).eq('company_id', companyId),
+    admin.from('profiles').select('id', { count: 'exact', head: true }).eq('org_id', companyId),
   ])
 
   if (!companyRes.data) return null
@@ -197,8 +191,7 @@ export async function listCompanyMembers(companyId: string): Promise<CompanyMemb
   if (caller.role === 'company_owner' && caller.orgId !== companyId) return null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from('profiles')
     .select('id, email, full_name, role, avatar_url')
     .eq('org_id', companyId)
@@ -224,10 +217,8 @@ export async function getCompanyCoursesAssignment(
 
   const admin = createAdminClient()
   const [allCoursesRes, assignedRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title, slug').order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('course_companies').select('course_id').eq('company_id', companyId),
+    admin.from('courses').select('id, title, slug').order('title'),
+    admin.from('course_companies').select('course_id').eq('company_id', companyId),
   ])
   return {
     allCourses: (allCoursesRes.data ?? []) as Array<{ id: string; title: string; slug: string }>,
@@ -257,8 +248,7 @@ export async function getCompanyLabsView(companyId: string): Promise<CompanyLabs
   if (caller.role === 'company_owner' && caller.orgId !== companyId) return null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: assigned } = await (admin as any)
+  const { data: assigned } = await admin
     .from('course_companies')
     .select('course_id')
     .eq('company_id', companyId)
@@ -269,14 +259,12 @@ export async function getCompanyLabsView(companyId: string): Promise<CompanyLabs
   }
 
   const [lessonsRes, labsRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin
       .from('lessons')
       .select('id, title, modules!inner(title, course_id, courses!inner(id, title))')
       .in('modules.course_id', courseIds)
       .order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('labs').select('lesson_id, title'),
+    admin.from('labs').select('lesson_id, title'),
   ])
 
   const labByLesson = new Map<string, string>(
@@ -319,8 +307,7 @@ export async function listCompanyCohorts(companyId: string): Promise<CompanyCoho
   if (caller.role === 'company_owner' && caller.orgId !== companyId) return null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohorts } = await (admin as any)
+  const { data: cohorts } = await admin
     .from('cohorts')
     .select('id, title, status, starts_at, ends_at, max_seats, modality, image_url')
     .eq('company_id', companyId)
@@ -330,8 +317,7 @@ export async function listCompanyCohorts(companyId: string): Promise<CompanyCoho
   const memberCount = new Map<string, number>()
   if (rows.length > 0) {
     const cohortIds = rows.map((r) => r.id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: enrollmentRows } = await (admin as any)
+    const { data: enrollmentRows } = await admin
       .from('enrollments')
       .select('cohort_id')
       .in('cohort_id', cohortIds)
@@ -361,10 +347,8 @@ export async function getCompanyCohortFormOptions(
 
   const admin = createAdminClient()
   const [coursesRes, companyRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').eq('id', companyId).single(),
+    admin.from('courses').select('id, title').eq('is_published', true).order('title'),
+    admin.from('organizations').select('id, name').eq('id', companyId).single(),
   ])
   return {
     courses: (coursesRes.data ?? []) as Array<{ id: string; title: string }>,
@@ -395,22 +379,16 @@ export async function getCompanyCohortDetailForAdmin(
     enrollmentsRes,
     invitationsRes,
   ] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohorts').select('*').eq('id', cohortId).single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin.from('cohorts').select('*').eq('id', cohortId).single(),
+    admin.from('courses').select('id, title').eq('is_published', true).order('title'),
+    admin.from('organizations').select('id, name').order('name'),
+    admin.from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
+    admin
       .from('enrollments')
       .select('id, status, enrolled_at, profiles(id, email, full_name, role)')
       .eq('cohort_id', cohortId)
       .order('enrolled_at', { ascending: false }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin
       .from('cohort_invitations')
       .select('id, code, max_uses, uses_count, expires_at, created_at')
       .eq('cohort_id', cohortId)
@@ -459,8 +437,7 @@ export async function getCompanyProgressView(companyId: string): Promise<Company
   if (caller.role === 'company_owner' && caller.orgId !== companyId) return null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohorts } = await (admin as any)
+  const { data: cohorts } = await admin
     .from('cohorts')
     .select('id, title')
     .eq('company_id', companyId)
@@ -473,8 +450,7 @@ export async function getCompanyProgressView(companyId: string): Promise<Company
     return { cohorts: [], progressRows: [], userMap: new Map(), courseMap: new Map() }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: progress } = await (admin as any)
+  const { data: progress } = await admin
     .from('v_cohort_progress')
     .select('cohort_id, user_id, course_id, total_lessons, completed_lessons, pct')
     .in('cohort_id', cohortIds)
@@ -485,12 +461,10 @@ export async function getCompanyProgressView(companyId: string): Promise<Company
 
   const [usersRes, coursesRes] = await Promise.all([
     userIds.length > 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? (admin as any).from('profiles').select('id, full_name, email').in('id', userIds)
+      ? admin.from('profiles').select('id, full_name, email').in('id', userIds)
       : Promise.resolve({ data: [] }),
     courseIds.length > 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? (admin as any).from('courses').select('id, title').in('id', courseIds)
+      ? admin.from('courses').select('id, title').in('id', courseIds)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -538,8 +512,7 @@ export async function getCohortStatsRawData(
   if (!caller) return null
   if (caller.role === 'company_owner' && caller.orgId !== companyId) return null
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const admin = createAdminClient() as any
+  const admin = createAdminClient()
 
   const { data: cohort } = await admin
     .from('cohorts')

@@ -39,8 +39,7 @@ export async function bulkAssignMembersAction(
     const trimmed = email.trim().toLowerCase()
     if (!trimmed) continue
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: profile } = await (admin as any)
+    const { data: profile } = await admin
       .from('profiles')
       .select('id, org_id')
       .eq('email', trimmed)
@@ -56,8 +55,7 @@ export async function bulkAssignMembersAction(
       continue
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (admin as any)
+    const { error } = await admin
       .from('profiles')
       .update({ org_id: companyId, updated_at: new Date().toISOString() })
       .eq('id', profile.id)

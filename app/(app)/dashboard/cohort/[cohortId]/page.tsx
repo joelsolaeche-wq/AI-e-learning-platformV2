@@ -57,15 +57,13 @@ export default async function DashboardCohortPage({
   if (!enrollmentRow) notFound()
 
   // 2. Pull the cohort itself.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let cohortRes = await (supabase as any)
+  let cohortRes = await supabase
     .from('cohorts')
     .select('id, title, status, starts_at, ends_at, course_id, company_id, image_url')
     .eq('id', cohortId)
     .maybeSingle()
   if (cohortRes.error) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cohortRes = await (supabase as any)
+    cohortRes = await supabase
       .from('cohorts')
       .select('id, title, status, starts_at, ends_at, course_id, company_id')
       .eq('id', cohortId)
@@ -173,10 +171,8 @@ export default async function DashboardCohortPage({
   const memberCount = (memberRows ?? []).length
 
   // 6. Resolve company for the back-link target.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: orgRow } = cohort.company_id
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ? await (supabase as any)
+    ? await supabase
         .from('organizations')
         .select('id, name')
         .eq('id', cohort.company_id)

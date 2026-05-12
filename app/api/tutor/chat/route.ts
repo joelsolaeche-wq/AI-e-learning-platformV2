@@ -80,8 +80,7 @@ export async function POST(request: Request) {
   }
   // transcript_segments was added in 20260509000001; the regenerated DB types
   // may lag, so cast through any to add the field to the SELECT projection.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: lesson, error: lessonError } = await (supabase as any)
+  const { data: lesson, error: lessonError } = await supabase
     .from('lessons')
     .select('id, title, transcript, transcript_segments, module_id')
     .eq('id', lessonId)

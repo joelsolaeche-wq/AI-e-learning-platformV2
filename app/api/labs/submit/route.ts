@@ -163,8 +163,12 @@ export async function POST(request: Request) {
   const labRow = lab as unknown as LabRow
 
   // Insert the submission row. RLS verifies auth.uid() = user_id.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: inserted, error: insertErr } = await (supabase as any)
+  type LabSubmissionInsertResult = { id: string; status: string; submitted_at: string }
+  // The Supabase client's typed Insert chain narrows to `never` here in
+  // this version of @supabase/supabase-js when the insert payload spreads
+  // a discriminated union (insertFields). Cast through unknown until the
+  // SDK ships a fix or we wrap the call in a typed helper.
+  const { data: inserted, error: insertErr } = (await supabase
     .from('lab_submissions')
     .insert({
       user_id: user.id,
@@ -172,9 +176,9 @@ export async function POST(request: Request) {
       cohort_id: enrollmentRow.cohort_id,
       ...insertFields,
       status: 'pending',
-    })
+    } as never)
     .select('id, status, submitted_at')
-    .single()
+    .single()) as unknown as { data: LabSubmissionInsertResult | null; error: { message: string } | null }
 
   if (insertErr || !inserted) {
     return NextResponse.json(

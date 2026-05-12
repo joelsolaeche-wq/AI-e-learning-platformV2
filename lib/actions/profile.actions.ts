@@ -26,10 +26,13 @@ export async function updateProfileAction(
     return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
+  // Supabase client's typed Update chain narrows to `never` here in this
+  // SDK version when the Update shape spreads inferred values. Cast the
+  // payload through `never` to satisfy the overload; runtime behavior
+  // unchanged.
+  const { error } = await supabase
     .from('profiles')
-    .update({ full_name: fullName || null, avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+    .update({ full_name: fullName || null, avatar_url: avatarUrl, updated_at: new Date().toISOString() } as never)
     .eq('id', user.id)
 
   if (error) return { error: error.message }

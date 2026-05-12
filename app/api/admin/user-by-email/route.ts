@@ -8,14 +8,13 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
+  const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single()
+    .single<{ role: string }>()
 
-  if (!['admin', 'instructor'].includes(profile?.role)) {
+  if (!profile || !['admin', 'instructor'].includes(profile.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -24,8 +23,7 @@ export async function GET(req: NextRequest) {
 
   const admin = createAdminClient()
   // Search by partial email or full_name match
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from('profiles')
     .select('id, email, full_name')
     .or(`email.ilike.%${email.toLowerCase().trim()}%,full_name.ilike.%${email.trim()}%`)

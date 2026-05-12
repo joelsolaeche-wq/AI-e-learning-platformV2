@@ -38,7 +38,7 @@ async function loadCaller(): Promise<Caller | null> {
   // Cast through unknown: even with the regenerated database.types.ts, the
   // generic chain in @supabase/supabase-js@2.105.1 widens the result to
   // `never` here. Tracked alongside the rest of the codebase's
-  // `(supabase as any)` casts in the cast-cleanup PR.
+  // `supabase` casts in the cast-cleanup PR.
   type ProfileRow = { role: string; org_id: string | null }
   const { data: profile } = await supabase
     .from('profiles')

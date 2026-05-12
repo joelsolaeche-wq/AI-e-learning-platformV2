@@ -177,8 +177,7 @@ export default async function DashboardPage() {
     ),
   )
   if (orgIdsForJoin.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: rawOrgs } = await (supabase as any)
+    const { data: rawOrgs } = await supabase
       .from('organizations')
       .select('id, name, logo_url')
       .in('id', orgIdsForJoin)

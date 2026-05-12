@@ -30,12 +30,12 @@ export default async function CatalogPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
+  type ProfileLookup = { role: string; org_id: string | null }
+  const { data: profile } = await supabase
     .from('profiles')
     .select('role, org_id')
     .eq('id', user.id)
-    .single()
+    .single<ProfileLookup>()
 
   const isAdminOrInstructor = profile?.role === 'admin' || profile?.role === 'instructor'
 
@@ -53,8 +53,7 @@ export default async function CatalogPage() {
     error = res.error
   } else if (profile?.org_id) {
     // Learners see only courses assigned to their company
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await (supabase as any)
+    const res = await supabase
       .from('course_companies')
       .select('courses!inner(id, title, slug, description, thumbnail_url)')
       .eq('company_id', profile.org_id)

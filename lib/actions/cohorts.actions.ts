@@ -38,8 +38,7 @@ export async function createCohortAction(
   const admin = createAdminClient()
   // course_id keeps the first selected course as a backward-compat hint
   const primaryCourseId = courseIds[0] ?? null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('cohorts')
     .insert({ course_id: primaryCourseId, company_id, title, starts_at, ends_at, max_seats, modality, notes, status, image_url })
     .select('id')
@@ -48,8 +47,7 @@ export async function createCohortAction(
   if (error) return { error: error.message }
 
   if (courseIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any)
+    await admin
       .from('cohort_courses')
       .insert(courseIds.map((cId) => ({ cohort_id: data.id, course_id: cId })))
   }
@@ -85,8 +83,7 @@ export async function updateCohortAction(
 
   // company_owner may only update cohorts that belong to their company
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existing } = await (admin as any)
+    const { data: existing } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (existing?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: cohort does not belong to your company.' }
@@ -95,8 +92,7 @@ export async function updateCohortAction(
 
   const primaryCourseId = courseIds[0] ?? null
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('cohorts')
     .update({ course_id: primaryCourseId, title, starts_at, ends_at, max_seats, modality, notes, status, company_id, image_url })
     .eq('id', cohortId)
@@ -104,11 +100,9 @@ export async function updateCohortAction(
   if (error) return { error: error.message }
 
   // Replace cohort_courses: delete all then re-insert selection
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any).from('cohort_courses').delete().eq('cohort_id', cohortId)
+  await admin.from('cohort_courses').delete().eq('cohort_id', cohortId)
   if (courseIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any)
+    await admin
       .from('cohort_courses')
       .insert(courseIds.map((cId) => ({ cohort_id: cohortId, course_id: cId })))
   }
@@ -125,16 +119,14 @@ export async function deleteCohortAction(cohortId: string): Promise<CohortAction
   const admin = createAdminClient()
 
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existing } = await (admin as any)
+    const { data: existing } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (existing?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: cohort does not belong to your company.' }
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any).from('cohorts').delete().eq('id', cohortId)
+  const { error } = await admin.from('cohorts').delete().eq('id', cohortId)
   if (error) return { error: error.message }
 
   revalidatePath('/admin/cohorts')
@@ -151,16 +143,14 @@ export async function archiveCohortAction(cohortId: string): Promise<CohortActio
   // Without this gate, a company_owner could pass any cohortId and silently
   // archive a competitor's active cohort (cross-tenant write via service-role).
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: existing } = await (admin as any)
+    const { data: existing } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (existing?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: cohort does not belong to your company.' }
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('cohorts')
     .update({ status: 'completed' })
     .eq('id', cohortId)
@@ -176,8 +166,7 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: original, error: fetchErr } = await (admin as any)
+  const { data: original, error: fetchErr } = await admin
     .from('cohorts')
     .select('course_id, company_id, title, max_seats, modality, notes')
     .eq('id', cohortId)
@@ -195,8 +184,7 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
   const newStarts = new Date()
   newStarts.setDate(newStarts.getDate() + 7)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('cohorts')
     .insert({
       course_id: original.course_id,
@@ -227,20 +215,17 @@ export async function unenrollUserAction(enrollmentId: string, cohortId: string)
   // the cohortId argument — otherwise a caller could pass any cohortId they own
   // alongside an enrollmentId from a different tenant and bypass the check.
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: enrollment } = await (admin as any)
+    const { data: enrollment } = await admin
       .from('enrollments').select('cohort_id').eq('id', enrollmentId).single()
     if (!enrollment) return { error: 'Enrollment not found.' }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cohort } = await (admin as any)
+    const { data: cohort } = await admin
       .from('cohorts').select('company_id').eq('id', enrollment.cohort_id).single()
     if (cohort?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: enrollment does not belong to your company.' }
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any).from('enrollments').delete().eq('id', enrollmentId)
+  const { error } = await admin.from('enrollments').delete().eq('id', enrollmentId)
   if (error) return { error: error.message }
 
   revalidatePath(`/admin/cohorts/${cohortId}`)
@@ -258,16 +243,14 @@ export async function enrollUserAction(
 
   // company_owner may only enroll users into cohorts of their own company.
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cohort } = await (admin as any)
+    const { data: cohort } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (cohort?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: cohort does not belong to your company.' }
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('enrollments')
     .upsert(
       { cohort_id: cohortId, user_id: userId, status: 'active' },
@@ -291,8 +274,7 @@ export async function bulkEnrollAction(
   // company_owner may only bulk-enroll into cohorts of their own company.
   // Resolve once before the loop — no need to re-check per email.
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cohort } = await (admin as any)
+    const { data: cohort } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (cohort?.company_id !== caller.orgId) {
       return { enrolled: 0, skipped: 0, errors: ['Unauthorized: cohort does not belong to your company.'] }
@@ -307,8 +289,7 @@ export async function bulkEnrollAction(
     const trimmed = email.trim().toLowerCase()
     if (!trimmed) continue
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: profile } = await (admin as any)
+    const { data: profile } = await admin
       .from('profiles')
       .select('id')
       .eq('email', trimmed)
@@ -319,8 +300,7 @@ export async function bulkEnrollAction(
       continue
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (admin as any)
+    const { error } = await admin
       .from('enrollments')
       .upsert(
         { cohort_id: cohortId, user_id: profile.id, status: 'active' },
@@ -357,8 +337,7 @@ export async function generateInvitationCodeAction(
   // company. Without this gate, a company_owner could mint an invitation
   // code for a competitor's cohort and share it, enrolling arbitrary users.
   if (caller.role === 'company_owner') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: cohort } = await (admin as any)
+    const { data: cohort } = await admin
       .from('cohorts').select('company_id').eq('id', cohortId).single()
     if (cohort?.company_id !== caller.orgId) {
       return { error: 'Unauthorized: cohort does not belong to your company.' }
@@ -368,8 +347,7 @@ export async function generateInvitationCodeAction(
   // Retry up to 5 times on unique code collision
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomBytes(4).toString('hex').toUpperCase()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (admin as any)
+    const { error } = await admin
       .from('cohort_invitations')
       .insert({
         cohort_id: cohortId,
@@ -397,8 +375,7 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
   const admin = createAdminClient()
 
   // Validate invitation code
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: invitation } = await (admin as any)
+  const { data: invitation } = await admin
     .from('cohort_invitations')
     .select('id, cohort_id, max_uses, uses_count, expires_at')
     .eq('code', code.toUpperCase().trim())
@@ -413,23 +390,20 @@ export async function joinCohortByCodeAction(code: string): Promise<CohortAction
   }
 
   // Enroll user
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: enrollError } = await (admin as any)
+  const { error: enrollError } = await admin
     .from('enrollments')
     .upsert({ cohort_id: invitation.cohort_id, user_id: user.id, status: 'active' })
 
   if (enrollError && enrollError.code !== '23505') return { error: enrollError.message }
 
   // Increment uses_count
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any)
+  await admin
     .from('cohort_invitations')
     .update({ uses_count: invitation.uses_count + 1 })
     .eq('id', invitation.id)
 
   // Fetch cohort title for toast feedback
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohort } = await (admin as any)
+  const { data: cohort } = await admin
     .from('cohorts')
     .select('title')
     .eq('id', invitation.cohort_id)
