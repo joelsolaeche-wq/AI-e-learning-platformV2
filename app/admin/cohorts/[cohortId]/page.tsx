@@ -1,5 +1,4 @@
-import { createAdminClient } from '@/lib/supabase/admin'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { CohortForm } from '@/components/admin/CohortForm'
@@ -7,6 +6,7 @@ import { CohortEnrollmentPanel } from '@/components/admin/CohortEnrollmentPanel'
 import { CohortInvitationPanel } from '@/components/admin/CohortInvitationPanel'
 import { CohortActionsBar } from '@/components/admin/CohortActionsBar'
 import { CohortTabs } from '@/components/admin/CohortTabs'
+import { getCohortDetailForAdmin } from '@/lib/queries/admin/cohorts.queries'
 
 export default async function EditCohortPage({
   params,
@@ -17,38 +17,12 @@ export default async function EditCohortPage({
 }) {
   const { cohortId } = await params
   const { tab, step } = await searchParams
-  const admin = createAdminClient()
 
-  const [cohortRes, coursesRes, companiesRes, cohortCoursesRes, enrollmentsRes, invitationsRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohorts').select('*').eq('id', cohortId).single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
-      .from('enrollments')
-      .select('id, status, enrolled_at, profiles(id, email, full_name, role)')
-      .eq('cohort_id', cohortId)
-      .order('enrolled_at', { ascending: false }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
-      .from('cohort_invitations')
-      .select('id, code, max_uses, uses_count, expires_at, created_at')
-      .eq('cohort_id', cohortId)
-      .order('created_at', { ascending: false }),
-  ])
+  const detail = await getCohortDetailForAdmin(cohortId)
+  if (detail === null) redirect('/admin')
+  if (!detail.cohort) notFound()
 
-  if (!cohortRes.data) notFound()
-
-  const selectedCourseIds: string[] = (cohortCoursesRes.data ?? []).map(
-    (r: { course_id: string }) => r.course_id,
-  )
-
-  const enrollments = enrollmentsRes.data ?? []
+  const { cohort, formOptions, selectedCourseIds, enrollments, invitations } = detail
   const isStep2 = step === '2'
 
   return (
@@ -61,9 +35,9 @@ export default async function EditCohortPage({
           >
             <ChevronLeft size={14} /> Cohorts
           </Link>
-          <h1 className="mt-3 text-2xl font-bold">{cohortRes.data.title}</h1>
+          <h1 className="mt-3 text-2xl font-bold">{cohort.title}</h1>
         </div>
-        <CohortActionsBar cohortId={cohortId} status={cohortRes.data.status} />
+        <CohortActionsBar cohortId={cohortId} status={cohort.status} />
       </div>
 
       <CohortTabs
@@ -74,9 +48,9 @@ export default async function EditCohortPage({
             label: 'Details',
             content: (
               <CohortForm
-                cohort={cohortRes.data}
-                courses={coursesRes.data ?? []}
-                companies={companiesRes.data ?? []}
+                cohort={cohort}
+                courses={formOptions.courses}
+                companies={formOptions.companies}
                 selectedCourseIds={selectedCourseIds}
               />
             ),
@@ -111,7 +85,7 @@ export default async function EditCohortPage({
           {
             id: 'invitations',
             label: 'Invitation codes',
-            content: <CohortInvitationPanel cohortId={cohortId} invitations={invitationsRes.data ?? []} />,
+            content: <CohortInvitationPanel cohortId={cohortId} invitations={invitations} />,
           },
         ]}
       />

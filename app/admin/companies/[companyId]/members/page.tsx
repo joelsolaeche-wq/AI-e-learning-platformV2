@@ -1,15 +1,8 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Users } from 'lucide-react'
 import { BulkMembersPanel } from '@/components/admin/BulkMembersPanel'
-
-type UserRow = {
-  id: string
-  email: string
-  full_name: string | null
-  role: string
-  avatar_url: string | null
-}
+import { listCompanyMembers } from '@/lib/queries/admin/companies.queries'
 
 const ROLE_STYLES: Record<string, string> = {
   admin: 'bg-violet-500/15 text-violet-400 border-violet-500/25',
@@ -24,16 +17,9 @@ export default async function CompanyMembersPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: users } = await (admin as any)
-    .from('profiles')
-    .select('id, email, full_name, role, avatar_url')
-    .eq('org_id', companyId)
-    .order('full_name')
-
-  const rows = (users ?? []) as UserRow[]
+  const rows = await listCompanyMembers(companyId)
+  if (rows === null) redirect('/admin')
 
   return (
     <div className="space-y-5">

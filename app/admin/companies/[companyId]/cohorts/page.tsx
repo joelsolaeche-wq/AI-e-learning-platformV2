@@ -1,18 +1,8 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, UsersRound } from 'lucide-react'
 import { CohortCard } from '@/components/cohorts/CohortCard'
-
-type CohortRow = {
-  id: string
-  title: string
-  status: string
-  starts_at: string
-  ends_at: string | null
-  max_seats: number
-  modality: string | null
-  image_url: string | null
-}
+import { listCompanyCohorts } from '@/lib/queries/admin/companies.queries'
 
 export default async function CompanyCohortListPage({
   params,
@@ -20,31 +10,10 @@ export default async function CompanyCohortListPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohorts } = await (admin as any)
-    .from('cohorts')
-    .select('id, title, status, starts_at, ends_at, max_seats, modality, image_url')
-    .eq('company_id', companyId)
-    .order('starts_at', { ascending: false })
-
-  const rows = (cohorts ?? []) as CohortRow[]
-
-  // Pull active enrollment counts per cohort in one query.
-  const memberCount = new Map<string, number>()
-  if (rows.length > 0) {
-    const cohortIds = rows.map((r) => r.id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: enrollmentRows } = await (admin as any)
-      .from('enrollments')
-      .select('cohort_id')
-      .in('cohort_id', cohortIds)
-      .eq('status', 'active')
-    for (const e of (enrollmentRows ?? []) as { cohort_id: string }[]) {
-      memberCount.set(e.cohort_id, (memberCount.get(e.cohort_id) ?? 0) + 1)
-    }
-  }
+  const result = await listCompanyCohorts(companyId)
+  if (result === null) redirect('/admin')
+  const { cohorts: rows, memberCount } = result
 
   return (
     <div className="space-y-5">

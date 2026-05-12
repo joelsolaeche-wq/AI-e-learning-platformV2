@@ -1,7 +1,8 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import { CohortForm } from '@/components/admin/CohortForm'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { getCompanyCohortFormOptions } from '@/lib/queries/admin/companies.queries'
 
 export default async function NewCompanyCohortPage({
   params,
@@ -9,14 +10,9 @@ export default async function NewCompanyCohortPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  const [coursesRes, companyRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').eq('id', companyId).single(),
-  ])
+  const options = await getCompanyCohortFormOptions(companyId)
+  if (options === null) redirect('/admin')
 
   return (
     <div className="max-w-xl space-y-6">
@@ -47,8 +43,8 @@ export default async function NewCompanyCohortPage({
       </div>
 
       <CohortForm
-        courses={coursesRes.data ?? []}
-        companies={companyRes.data ? [companyRes.data] : []}
+        courses={options.courses}
+        companies={options.company ? [options.company] : []}
         defaultCompanyId={companyId}
         lockCompany
         redirectBase={`/admin/companies/${companyId}/cohorts`}
