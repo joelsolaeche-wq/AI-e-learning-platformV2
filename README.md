@@ -9,7 +9,7 @@ codebase-port/
 ├── app/
 │   ├── globals.css                 # Token swap (dark, violet+cyan)
 │   ├── dashboard/
-│   │   ├── layout.tsx              # Sidebar + TopBar + global TutorPanel
+│   │   ├── layout.tsx              # Sidebar + TopBar
 │   │   └── page.tsx                # Hero + cohort grid w/ progress rings
 │   └── catalog/
 │       └── page.tsx                # Gradient course cards
@@ -20,7 +20,7 @@ codebase-port/
 │   ├── ui/
 │   │   └── Ring.tsx                # SVG progress ring, glow shadow
 │   ├── QuizSection.tsx             # Card-stack quiz, animated reveal
-│   └── TutorPanel.tsx              # Floating AI dock (⌘J)
+│   └── TutorPanel.tsx              # Inline AI tutor (Synapse), rendered in the lesson right column
 └── README.md (this file)
 ```
 
@@ -30,7 +30,7 @@ codebase-port/
    - Adds Inter + JetBrains Mono fonts, ambient gradient bg, dark tokens.
    - Force `<html className="dark">` in `app/layout.tsx`.
 2. **Drop `components/layout/Sidebar.tsx` + `TopBar.tsx`** into `components/layout/`.
-3. **Replace `app/dashboard/layout.tsx`** with the version here. It pulls the user/profile and renders the chrome + global `TutorPanel`.
+3. **Replace `app/dashboard/layout.tsx`** with the version here. It pulls the user/profile and renders the chrome (sidebar + top bar). The `TutorPanel` is rendered per-lesson, not globally.
 4. **Replace `app/dashboard/page.tsx`** — keeps your existing Supabase queries, only the markup changes. Types use your `Database` from `@/lib/database.types`.
 5. **Replace `app/catalog/page.tsx`** — same data shape, gradient cards instead of plain ones.
 6. **Drop `components/QuizSection.tsx`** — card-stack version. Same prop shape: `{ questions, lessonId, onComplete }`.
