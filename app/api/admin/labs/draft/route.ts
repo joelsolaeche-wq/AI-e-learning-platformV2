@@ -9,7 +9,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Cap the slice of transcript we feed the model. 24k chars is roughly
 // 6k tokens — enough for a 30-min lesson once whitespace-collapsed, well
 // under context limits, keeps cost ≪ $0.05 per draft.
-const MAX_TRANSCRIPT_CHARS = 24_000
+const DRAFT_TRANSCRIPT_MAX_CHARS = 24_000
 
 const RubricItemSchema = z.object({
   criterion: z.string().min(2).max(200),
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const transcriptSlice = String(lesson.transcript).slice(0, MAX_TRANSCRIPT_CHARS)
+  const transcriptSlice = String(lesson.transcript).slice(0, DRAFT_TRANSCRIPT_MAX_CHARS)
 
   const systemPrompt = `You design hands-on coding labs for an enterprise AI engineering curriculum. Given a lesson transcript, propose:
 - A short lab title (≤80 chars).
@@ -84,7 +84,7 @@ Rules:
 
   const userPrompt = `Lesson title: ${lesson.title}
 
-Lesson transcript (first ${MAX_TRANSCRIPT_CHARS} chars):
+Lesson transcript (first ${DRAFT_TRANSCRIPT_MAX_CHARS} chars):
 """
 ${transcriptSlice}
 """
