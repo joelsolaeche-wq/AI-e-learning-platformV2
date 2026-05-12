@@ -4,6 +4,27 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin, assertAdminOrInstructor } from '@/lib/auth/guards'
+import type { Database } from '@/lib/database.types'
+
+type CourseRow = Database['public']['Tables']['courses']['Row']
+type LessonRow = Database['public']['Tables']['lessons']['Row']
+type LabRow = Database['public']['Tables']['labs']['Row']
+
+// Lesson detail page selects a subset of columns — narrow the row type
+// to those fields so callers see exactly what's available.
+type LessonDetailRow = Pick<
+  LessonRow,
+  | 'id'
+  | 'title'
+  | 'mux_playback_id'
+  | 'duration_seconds'
+  | 'transcript'
+  | 'position'
+  | 'content_type'
+  | 'document_url'
+  | 'slides_url'
+  | 'notebook_url'
+>
 
 // ──────────────────────────────────────────────────────────────────────
 // Course listing
@@ -48,7 +69,7 @@ export type AdminCourseModule = {
 }
 
 export type AdminCourseDetail = {
-  course: any
+  course: CourseRow | null
   modules: AdminCourseModule[]
 }
 
@@ -97,8 +118,8 @@ export type AdminLessonRubricItem = {
 }
 
 export type AdminLessonDetail = {
-  lesson: any
-  existingLab: any | null
+  lesson: LessonDetailRow | null
+  existingLab: Pick<LabRow, 'id' | 'title' | 'brief_md'> | null
   rubricItems: AdminLessonRubricItem[]
 }
 

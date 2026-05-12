@@ -6,6 +6,9 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertAdmin, assertAdminOrStaff } from '@/lib/auth/guards'
+import type { Database } from '@/lib/database.types'
+
+type CohortRow = Database['public']['Tables']['cohorts']['Row']
 
 // ──────────────────────────────────────────────────────────────────────
 // Cohort listing (admin global view)
@@ -68,7 +71,7 @@ export async function listCohortFormOptions(): Promise<CohortFormOptions | null>
 // ──────────────────────────────────────────────────────────────────────
 
 export type AdminCohortDetail = {
-  cohort: any
+  cohort: CohortRow
   formOptions: CohortFormOptions
   selectedCourseIds: string[]
   enrollments: Array<{
