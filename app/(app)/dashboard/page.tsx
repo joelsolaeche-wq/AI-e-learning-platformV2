@@ -146,43 +146,16 @@ export default async function DashboardPage() {
 
   const cohortIds = Array.from(new Set(rawEnrollments.map((e) => e.cohort_id)))
   if (cohortIds.length > 0) {
-    // Try with the new image_url column first. If PostgREST's schema cache
-    // hasn't picked it up yet (just-applied migration on Supabase Cloud
-    // sometimes lags), fall back to the column set without it — better to
-    // render cards with a gradient fallback than an empty grid.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cohortRes = await (supabase as any)
+    const { data: cohortRows, error: cohortErr } = await supabase
       .from('cohorts')
       .select('id, title, status, starts_at, ends_at, course_id, company_id, image_url')
       .in('id', cohortIds)
-    if (cohortRes.error) {
-      const e = cohortRes.error as {
-        message?: string; code?: string; details?: string; hint?: string
-      }
-      console.warn('[dashboard] cohorts query with image_url failed, retrying without:', {
-        message: e.message, code: e.code, details: e.details, hint: e.hint,
+    if (cohortErr) {
+      console.error('[dashboard] cohorts query failed:', {
+        message: cohortErr.message, code: cohortErr.code, details: cohortErr.details, hint: cohortErr.hint,
       })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fallback = await (supabase as any)
-        .from('cohorts')
-        .select('id, title, status, starts_at, ends_at, course_id, company_id')
-        .in('id', cohortIds)
-      if (fallback.error) {
-        const e2 = fallback.error as {
-          message?: string; code?: string; details?: string; hint?: string
-        }
-        console.error('[dashboard] cohorts fallback query also failed:', {
-          message: e2.message, code: e2.code, details: e2.details, hint: e2.hint,
-        })
-      }
-      cohortRes = {
-        data: ((fallback.data ?? []) as Array<Omit<CohortRow, 'image_url'>>).map(
-          (c) => ({ ...c, image_url: null }) as CohortRow,
-        ),
-        error: null,
-      }
     }
-    for (const c of (cohortRes.data ?? []) as CohortRow[]) cohortMap.set(c.id, c)
+    for (const c of (cohortRows ?? []) as CohortRow[]) cohortMap.set(c.id, c)
   }
 
   const courseIdsForJoin = Array.from(

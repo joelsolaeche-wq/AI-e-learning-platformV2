@@ -51,27 +51,17 @@ export default async function DashboardCompanyPage({
   //    learners shouldn't see in-flight admin work-in-progress entries.
   const cohortsInCompany: CohortRow[] = []
   if (cohortIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let cohortRes = await (supabase as any)
+    const { data: cohortRows, error: cohortErr } = await supabase
       .from('cohorts')
       .select('id, title, status, starts_at, ends_at, course_id, company_id, image_url')
       .in('id', cohortIds)
       .eq('company_id', companyId)
-    if (cohortRes.error) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const fallback = await (supabase as any)
-        .from('cohorts')
-        .select('id, title, status, starts_at, ends_at, course_id, company_id')
-        .in('id', cohortIds)
-        .eq('company_id', companyId)
-      cohortRes = {
-        data: ((fallback.data ?? []) as Array<Omit<CohortRow, 'image_url'>>).map(
-          (c) => ({ ...c, image_url: null }) as CohortRow,
-        ),
-        error: null,
-      }
+    if (cohortErr) {
+      console.error('[dashboard/company] cohorts query failed:', {
+        message: cohortErr.message, code: cohortErr.code, details: cohortErr.details, hint: cohortErr.hint,
+      })
     }
-    for (const c of cohortRes.data as CohortRow[]) {
+    for (const c of (cohortRows ?? []) as CohortRow[]) {
       if (c.status !== 'draft') cohortsInCompany.push(c)
     }
   }
