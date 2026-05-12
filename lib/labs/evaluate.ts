@@ -17,7 +17,7 @@ import { fetchPublicRepoSnapshot, type GitHubFetchError } from '@/lib/github/fet
 // 90s ceiling for the model call. The route handler should also have
 // `export const maxDuration = 90` so Vercel doesn't kill us early.
 const EVAL_TIMEOUT_MS = 90_000
-const MAX_TRANSCRIPT_CHARS = 12_000 // grading prompt is dominated by the repo snapshot
+const EVAL_TRANSCRIPT_MAX_CHARS = 12_000 // grading prompt is dominated by the repo snapshot
 const REPO_SNAPSHOT_CHAR_BUDGET = 120_000 // leaves headroom for prompt + JSON
 
 export type EvaluateResult =
@@ -126,7 +126,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
 
   try {
     // 3. Build the type-specific grading prompt.
-    const transcriptSlice = (lesson?.transcript ?? '').slice(0, MAX_TRANSCRIPT_CHARS)
+    const transcriptSlice = (lesson?.transcript ?? '').slice(0, EVAL_TRANSCRIPT_MAX_CHARS)
     const rubricText = rubric
       .map(
         (r) =>
@@ -161,7 +161,7 @@ Return ONE rubricItemId per item. The set of rubricItemIds you return must exact
 
     const lessonContextPreamble = `LESSON: ${lesson?.title ?? '(unknown)'}
 
-LESSON TRANSCRIPT (first ${MAX_TRANSCRIPT_CHARS} chars):
+LESSON TRANSCRIPT (first ${EVAL_TRANSCRIPT_MAX_CHARS} chars):
 """
 ${transcriptSlice}
 """
