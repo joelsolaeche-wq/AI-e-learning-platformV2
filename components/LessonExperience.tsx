@@ -377,7 +377,6 @@ export function LessonExperience({
             left column scrolls. */}
         <aside className="w-full flex-shrink-0 lg:sticky lg:top-4 lg:w-[400px] xl:w-[420px]">
           <TutorPanel
-            mode="embedded"
             lessonId={lesson.id}
             initialMessages={tutorInitialMessages}
           />

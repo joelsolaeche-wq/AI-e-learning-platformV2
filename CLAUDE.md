@@ -128,8 +128,7 @@ These are tracked items, currently being addressed via small dedicated PRs:
 9. **18 server pages import `createAdminClient` directly**, including the learner-facing `app/(app)/dashboard/lesson/[lessonId]/page.tsx`. Move admin reads behind `lib/queries/admin/*`.
 10. **God modules** — `lib/actions/admin.actions.ts` (296 LOC mixing users + members + CSV) and `lib/actions/cohorts.actions.ts` (392 LOC mixing CRUD + enrollment + invites); split by resource.
 11. **`lib/github/fetch-repo.ts:235`** — comment claims `0x00` check but code is `sample.includes(' ')` (regular space). Correctness + minor security bug.
-12. **TutorPanel `'floating'` mode unreachable** (only `mode="embedded"` is used); ~60-80 LOC of dead UI code. README still mentions a "Cmd-J floating dock" that no longer exists.
-13. **`process.env.NEXT_PUBLIC_SITE_URL ?? ''`** in `lib/actions/auth.actions.ts:31` and `profile.actions.ts:48` — silent fallback to empty string in production.
+12. **`process.env.NEXT_PUBLIC_SITE_URL ?? ''`** in `lib/actions/auth.actions.ts:31` and `profile.actions.ts:48` — silent fallback to empty string in production.
 
 ## Don't do (anti-patterns observed historically)
 

@@ -2,14 +2,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Sparkles, Send, X, Minus, Maximize2, Minimize2 } from 'lucide-react'
+import { Sparkles, Send, Maximize2, Minimize2 } from 'lucide-react'
 import { AssistantMessage } from '@/components/synapse/AssistantMessage'
 
 interface Message { role: 'user' | 'assistant'; content: string }
 
-type DisplayMode = 'pill' | 'default' | 'embedded' | 'expanded'
-
-const STORAGE_KEY = 'synapse-panel-mode'
+type DisplayMode = 'embedded' | 'expanded'
 
 const WELCOME: Message = {
   role: 'assistant',
@@ -19,23 +17,15 @@ const WELCOME: Message = {
 interface Props {
   lessonId?: string
   initialMessages?: { id?: string; role: string; content: string; createdAt?: Date }[]
-  /**
-   * Layout mode:
-   *   'floating' (default) — fixed bottom-right pill that opens to a
-   *     small panel; legacy behavior used outside lesson pages.
-   *   'embedded' — renders inline, full-width inside the parent column.
-   *     Always visible. Used in the lesson right sidebar (Codecademy
-   *     layout). Expand still toggles to a near-fullscreen overlay.
-   */
-  mode?: 'floating' | 'embedded'
 }
 
-export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Props) {
-  const [displayMode, setDisplayMode] = useState<DisplayMode>(
-    mode === 'embedded' ? 'embedded' : 'pill',
-  )
-  // For floating mode only: which size to restore when re-opening from pill.
-  const [lastFloatingOpenMode, setLastFloatingOpenMode] = useState<'default' | 'expanded'>('default')
+/**
+ * AI tutor panel rendered inline inside the lesson page's right column
+ * (Codecademy two-column layout). Always visible. The expand button
+ * toggles a near-fullscreen overlay variant for longer reads.
+ */
+export function TutorPanel({ lessonId, initialMessages }: Props) {
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('embedded')
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<Message[]>(() => {
     if (initialMessages && initialMessages.length > 0) {
@@ -48,49 +38,12 @@ export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Pro
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Restore preferred open size from localStorage (floating mode only).
-  useEffect(() => {
-    if (mode !== 'floating') return
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY)
-      if (saved === 'default' || saved === 'expanded') {
-        setLastFloatingOpenMode(saved)
-      }
-    } catch {
-      // ignore
-    }
-  }, [mode])
-
-  // Persist preferred open size when it changes (floating mode only).
-  useEffect(() => {
-    if (mode !== 'floating') return
-    try {
-      window.localStorage.setItem(STORAGE_KEY, lastFloatingOpenMode)
-    } catch {
-      // ignore
-    }
-  }, [lastFloatingOpenMode, mode])
-
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 99999, behavior: 'smooth' })
   }, [messages, displayMode])
 
-  function openFromPill() {
-    setDisplayMode(lastFloatingOpenMode)
-  }
-
   function toggleExpanded() {
-    if (mode === 'embedded') {
-      setDisplayMode((prev) => (prev === 'expanded' ? 'embedded' : 'expanded'))
-    } else {
-      const next: 'default' | 'expanded' = displayMode === 'expanded' ? 'default' : 'expanded'
-      setDisplayMode(next)
-      setLastFloatingOpenMode(next)
-    }
-  }
-
-  function minimizeToPill() {
-    setDisplayMode('pill')
+    setDisplayMode((prev) => (prev === 'expanded' ? 'embedded' : 'expanded'))
   }
 
   async function send(text?: string) {
@@ -168,45 +121,20 @@ export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Pro
     }
   }
 
-  // ---------------------------------------------------------------------
-  // PILL — floating mode only
-  // ---------------------------------------------------------------------
-  if (displayMode === 'pill') {
-    return (
-      <button
-        onClick={openFromPill}
-        className="fixed bottom-7 right-7 z-50 flex items-center gap-2.5 rounded-full bg-gradient-to-b from-primary to-primary/75 px-5 py-3.5 text-[13px] font-semibold text-primary-foreground glow-primary transition-transform hover:-translate-y-0.5"
-      >
-        <Sparkles size={15} className="drop-shadow-[0_0_8px_white]" />
-        Ask Synapse
-        <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.5 font-mono text-[10px]">⌘J</span>
-      </button>
-    )
-  }
-
-  // ---------------------------------------------------------------------
-  // PANEL — picks container styling based on displayMode
-  // ---------------------------------------------------------------------
   const isExpanded = displayMode === 'expanded'
-  const isEmbedded = displayMode === 'embedded'
 
+  // Expanded variant overlays the viewport (anchored bottom-right). Default
+  // embedded variant fills the right column down to near the viewport bottom —
+  // the parent uses `lg:sticky lg:top-4` so this stays anchored while the
+  // left column scrolls. min-h keeps it readable on shorter screens.
   const containerClasses = isExpanded
-    ? // Fullscreen-ish overlay (anchored bottom-right of viewport)
-      'fixed bottom-7 right-7 z-50 h-[min(720px,85vh)] w-[min(900px,92vw)] shadow-[0_32px_64px_rgba(0,0,0,0.6),0_0_48px_rgba(139,92,246,0.3)]'
-    : isEmbedded
-      ? // Inline inside the parent column (Codecademy-style). Fills the
-        // right column down to near the viewport bottom — the parent uses
-        // `lg:sticky lg:top-4` so this stays anchored while the left
-        // column scrolls. min-h keeps it readable on shorter screens.
-        'relative w-full h-[calc(100vh-120px)] min-h-[560px] shadow-[0_8px_24px_rgba(0,0,0,0.25)]'
-      : // Floating mode default size
-        'fixed bottom-7 right-7 z-50 h-[640px] w-[440px] shadow-[0_24px_48px_rgba(0,0,0,0.5),0_0_32px_rgba(139,92,246,0.25)]'
+    ? 'fixed bottom-7 right-7 z-50 h-[min(720px,85vh)] w-[min(900px,92vw)] shadow-[0_32px_64px_rgba(0,0,0,0.6),0_0_48px_rgba(139,92,246,0.3)]'
+    : 'relative w-full h-[calc(100vh-120px)] min-h-[560px] shadow-[0_8px_24px_rgba(0,0,0,0.25)]'
 
   return (
     <div
       className={[
         'flex flex-col overflow-hidden rounded-2xl border border-border bg-[#11111C]/95 backdrop-blur-xl',
-        isEmbedded ? '' : 'animate-[fadeUp_.18s_ease]',
         containerClasses,
       ].join(' ')}
     >
@@ -230,27 +158,6 @@ export function TutorPanel({ lessonId, initialMessages, mode = 'floating' }: Pro
         >
           {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
-        {/* Minimize/close are floating-mode only — embedded chat is always visible. */}
-        {mode === 'floating' && (
-          <>
-            <button
-              onClick={minimizeToPill}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-white/5 hover:text-foreground"
-              aria-label="Minimize"
-              title="Minimize"
-            >
-              <Minus size={14} />
-            </button>
-            <button
-              onClick={minimizeToPill}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-white/5 hover:text-foreground"
-              aria-label="Close"
-              title="Close"
-            >
-              <X size={14} />
-            </button>
-          </>
-        )}
       </div>
 
       {/* Messages */}
