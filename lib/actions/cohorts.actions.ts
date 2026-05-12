@@ -4,28 +4,15 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
+import { assertAdminOrStaff } from '@/lib/auth/guards'
 
 export type CohortActionResult = { error: string | null; success?: boolean; id?: string; cohortTitle?: string }
-
-async function assertAdminOrInstructor() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role, org_id')
-    .eq('id', user.id)
-    .single()
-  if (!['admin', 'instructor', 'company_owner'].includes(profile?.role)) return null
-  return { user, role: profile.role as string, orgId: profile.org_id as string | null }
-}
 
 export async function createCohortAction(
   _prevState: CohortActionResult,
   formData: FormData,
 ): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const courseIds = formData.getAll('course_ids') as string[]
@@ -75,7 +62,7 @@ export async function updateCohortAction(
   _prevState: CohortActionResult,
   formData: FormData,
 ): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const cohortId = formData.get('cohort_id') as string
@@ -132,7 +119,7 @@ export async function updateCohortAction(
 }
 
 export async function deleteCohortAction(cohortId: string): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
@@ -155,7 +142,7 @@ export async function deleteCohortAction(cohortId: string): Promise<CohortAction
 }
 
 export async function archiveCohortAction(cohortId: string): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
@@ -185,7 +172,7 @@ export async function archiveCohortAction(cohortId: string): Promise<CohortActio
 }
 
 export async function cloneCohortAction(cohortId: string): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
@@ -230,7 +217,7 @@ export async function cloneCohortAction(cohortId: string): Promise<CohortActionR
 }
 
 export async function unenrollUserAction(enrollmentId: string, cohortId: string): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
@@ -264,7 +251,7 @@ export async function enrollUserAction(
   cohortId: string,
   userId: string,
 ): Promise<CohortActionResult> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
@@ -296,7 +283,7 @@ export async function bulkEnrollAction(
   cohortId: string,
   emails: string[],
 ): Promise<{ enrolled: number; skipped: number; errors: string[] }> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { enrolled: 0, skipped: 0, errors: ['Unauthorized.'] }
 
   const admin = createAdminClient()
@@ -357,7 +344,7 @@ export async function generateInvitationCodeAction(
   maxUses?: number,
   expiresInDays?: number,
 ): Promise<{ error: string | null; code?: string }> {
-  const caller = await assertAdminOrInstructor()
+  const caller = await assertAdminOrStaff()
   if (!caller) return { error: 'Unauthorized.' }
 
   const expires_at = expiresInDays
