@@ -1,69 +1,15 @@
-import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Building2, Plus } from 'lucide-react'
 import { CompanyCard } from '@/components/companies/CompanyCard'
-
-type CompanyRow = {
-  id: string
-  name: string
-  slug: string
-  description: string | null
-  logo_url: string | null
-  website: string | null
-  deleted_at: string | null
-}
+import { listAllCompaniesForAdmin } from '@/lib/queries/admin/companies.queries'
 
 export default async function AdminCompaniesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  const result = await listAllCompaniesForAdmin()
+  if (result === null) redirect('/auth/login')
+  if (result.kind === 'redirect') redirect(`/admin/companies/${result.orgId}`)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles')
-    .select('role, org_id')
-    .eq('id', user.id)
-    .single()
-
-  // company_owner goes directly to their workspace — no list needed
-  if (profile?.role === 'company_owner' && profile?.org_id) {
-    redirect(`/admin/companies/${profile.org_id}`)
-  }
-
-  const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminAny = admin as any
-  const [companiesResult, cohortCountsResult, learnerCountsResult] = await Promise.all([
-    adminAny
-      .from('organizations')
-      .select('id, name, slug, description, logo_url, website, deleted_at')
-      .order('name', { ascending: true }),
-    adminAny
-      .from('cohorts')
-      .select('company_id'),
-    adminAny
-      .from('profiles')
-      .select('org_id')
-      .not('org_id', 'is', null),
-  ])
-
-  const allRows = (companiesResult.data ?? []) as CompanyRow[]
-  const rows = allRows.filter((c) => !c.deleted_at)
-  const archivedRows = allRows.filter((c) => c.deleted_at)
-
-  // Build counts maps
-  const cohortCount = new Map<string, number>()
-  for (const r of (cohortCountsResult.data ?? []) as { company_id: string | null }[]) {
-    if (!r.company_id) continue
-    cohortCount.set(r.company_id, (cohortCount.get(r.company_id) ?? 0) + 1)
-  }
-  const learnerCount = new Map<string, number>()
-  for (const r of (learnerCountsResult.data ?? []) as { org_id: string | null }[]) {
-    if (!r.org_id) continue
-    learnerCount.set(r.org_id, (learnerCount.get(r.org_id) ?? 0) + 1)
-  }
+  const { active: rows, archived: archivedRows, cohortCount, learnerCount } = result.data
 
   return (
     <div className="space-y-6">

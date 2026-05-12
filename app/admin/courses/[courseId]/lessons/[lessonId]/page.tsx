@@ -1,10 +1,9 @@
-import { createAdminClient } from '@/lib/supabase/admin'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { LessonForm } from '@/components/admin/LessonForm'
 import { LabEditorForm } from '@/components/admin/LabEditorForm'
-import type { RubricItemInput } from '@/lib/actions/lab.actions'
+import { getLessonDetailForAdmin } from '@/lib/queries/admin/courses.queries'
 
 export default async function EditLessonPage({
   params,
@@ -12,43 +11,11 @@ export default async function EditLessonPage({
   params: Promise<{ courseId: string; lessonId: string }>
 }) {
   const { courseId, lessonId } = await params
-  const admin = createAdminClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [lessonResult, labResult] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
-      .from('lessons')
-      .select('id, title, mux_playback_id, duration_seconds, transcript, position, content_type, document_url, slides_url, notebook_url')
-      .eq('id', lessonId)
-      .single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
-      .from('labs')
-      .select('id, title, brief_md')
-      .eq('lesson_id', lessonId)
-      .maybeSingle(),
-  ])
-
-  if (!lessonResult.data) notFound()
-
-  const lesson = lessonResult.data
-  const existingLab = labResult.data ?? null
-
-  let rubricItems: RubricItemInput[] = []
-  if (existingLab) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: rubric } = await (admin as any)
-      .from('lab_rubric_items')
-      .select('criterion, description, weight, position')
-      .eq('lab_id', existingLab.id)
-      .order('position', { ascending: true })
-    rubricItems = (rubric ?? []).map((r: { criterion: string; description: string; weight: number }) => ({
-      criterion: r.criterion,
-      description: r.description,
-      weight: r.weight,
-    }))
-  }
+  const detail = await getLessonDetailForAdmin(lessonId)
+  if (detail === null) redirect('/admin')
+  if (!detail.lesson) notFound()
+  const { lesson, existingLab, rubricItems } = detail
 
   const hasTranscript = Boolean(lesson.transcript && lesson.transcript.trim().length > 0)
 

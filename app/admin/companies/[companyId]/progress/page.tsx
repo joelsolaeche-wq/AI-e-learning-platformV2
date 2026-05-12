@@ -1,18 +1,6 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import { BarChart3 } from 'lucide-react'
-
-type ProgressRow = {
-  cohort_id: string
-  user_id: string
-  course_id: string
-  total_lessons: number
-  completed_lessons: number
-  pct: number
-}
-
-type CohortMeta = { id: string; title: string }
-type UserMeta = { id: string; full_name: string | null; email: string }
-type CourseMeta = { id: string; title: string }
+import { getCompanyProgressView } from '@/lib/queries/admin/companies.queries'
 
 export default async function CompanyProgressPage({
   params,
@@ -20,20 +8,12 @@ export default async function CompanyProgressPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  // Get cohorts for this company
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohorts } = await (admin as any)
-    .from('cohorts')
-    .select('id, title')
-    .eq('company_id', companyId)
-    .order('starts_at', { ascending: false })
+  const view = await getCompanyProgressView(companyId)
+  if (view === null) redirect('/admin')
+  const { cohorts: cohortList, progressRows, userMap, courseMap } = view
 
-  const cohortList = (cohorts ?? []) as CohortMeta[]
-  const cohortIds = cohortList.map((c) => c.id)
-
-  if (cohortIds.length === 0) {
+  if (cohortList.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card p-10 text-center">
         <BarChart3 size={32} className="mx-auto mb-3 text-muted-foreground/40" />
@@ -45,39 +25,8 @@ export default async function CompanyProgressPage({
     )
   }
 
-  // Read progress from the view (service-role bypasses RLS)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: progress } = await (admin as any)
-    .from('v_cohort_progress')
-    .select('cohort_id, user_id, course_id, total_lessons, completed_lessons, pct')
-    .in('cohort_id', cohortIds)
-
-  const progressRows = (progress ?? []) as ProgressRow[]
-
-  // Collect user ids and course ids from the result to fetch metadata
-  const userIds = [...new Set(progressRows.map((r) => r.user_id))]
-  const courseIds = [...new Set(progressRows.map((r) => r.course_id))]
-
-  const [usersRes, coursesRes] = await Promise.all([
-    userIds.length > 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? (admin as any).from('profiles').select('id, full_name, email').in('id', userIds)
-      : Promise.resolve({ data: [] }),
-    courseIds.length > 0
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ? (admin as any).from('courses').select('id, title').in('id', courseIds)
-      : Promise.resolve({ data: [] }),
-  ])
-
-  const userMap = new Map<string, UserMeta>(
-    (usersRes.data ?? []).map((u: UserMeta) => [u.id, u]),
-  )
-  const courseMap = new Map<string, CourseMeta>(
-    (coursesRes.data ?? []).map((c: CourseMeta) => [c.id, c]),
-  )
-
   // Group progress by cohort
-  const byCohort = new Map<string, ProgressRow[]>()
+  const byCohort = new Map<string, typeof progressRows>()
   for (const row of progressRows) {
     if (!byCohort.has(row.cohort_id)) byCohort.set(row.cohort_id, [])
     byCohort.get(row.cohort_id)!.push(row)
@@ -87,7 +36,7 @@ export default async function CompanyProgressPage({
     <div className="space-y-8">
       {cohortList.map((cohort) => {
         const rows = byCohort.get(cohort.id) ?? []
-        const userGroups = new Map<string, ProgressRow[]>()
+        const userGroups = new Map<string, typeof progressRows>()
         for (const r of rows) {
           if (!userGroups.has(r.user_id)) userGroups.set(r.user_id, [])
           userGroups.get(r.user_id)!.push(r)

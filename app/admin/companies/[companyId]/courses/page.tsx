@@ -1,9 +1,8 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { CompanyCourseAssignment } from '@/components/admin/CompanyCourseAssignment'
 import { ExternalLink } from 'lucide-react'
-
-type CourseRow = { id: string; title: string; slug: string }
+import { getCompanyCoursesAssignment } from '@/lib/queries/admin/companies.queries'
 
 export default async function CompanyCoursesPage({
   params,
@@ -11,17 +10,11 @@ export default async function CompanyCoursesPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  const [allCoursesRes, assignedRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title, slug').order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('course_companies').select('course_id').eq('company_id', companyId),
-  ])
+  const result = await getCompanyCoursesAssignment(companyId)
+  if (result === null) redirect('/admin')
+  const { allCourses, assignedCourseIds } = result
 
-  const assignedCourseIds: string[] = (assignedRes.data ?? []).map((r: { course_id: string }) => r.course_id)
-  const allCourses: CourseRow[] = allCoursesRes.data ?? []
   const assignedCourses = allCourses.filter((c) => assignedCourseIds.includes(c.id))
 
   return (

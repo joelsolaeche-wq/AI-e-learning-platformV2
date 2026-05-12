@@ -1,6 +1,7 @@
-import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { Plus, UsersRound } from 'lucide-react'
+import { listAllCohortsForAdmin } from '@/lib/queries/admin/cohorts.queries'
 
 const STATUS_STYLES: Record<string, string> = {
   active: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
@@ -10,18 +11,8 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 export default async function AdminCohortsPage() {
-  const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: cohorts } = await (admin as any)
-    .from('cohorts')
-    .select(`
-      id, title, status, starts_at, ends_at, max_seats, modality,
-      courses(title),
-      organizations(name)
-    `)
-    .order('starts_at', { ascending: false })
-
-  const rows = cohorts ?? []
+  const rows = await listAllCohortsForAdmin()
+  if (rows === null) redirect('/admin')
 
   return (
     <div className="space-y-6">
@@ -59,12 +50,7 @@ export default async function AdminCohortsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((cohort: {
-                id: string; title: string; status: string; starts_at: string; ends_at: string | null;
-                max_seats: number; modality: string | null;
-                courses: { title: string } | null;
-                organizations: { name: string } | null;
-              }) => (
+              {rows.map((cohort) => (
                 <tr key={cohort.id} className="hover:bg-white/[0.02] transition-colors">
                   <td className="px-4 py-3">
                     <div className="font-medium">{cohort.title}</div>

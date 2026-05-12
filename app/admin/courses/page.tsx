@@ -1,6 +1,7 @@
-import { createAdminClient } from '@/lib/supabase/admin'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { BookOpen, Plus } from 'lucide-react'
+import { listAllCoursesForAdmin } from '@/lib/queries/admin/courses.queries'
 
 const STATUS_STYLES: Record<string, string> = {
   published: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
@@ -9,14 +10,8 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 export default async function AdminCoursesPage() {
-  const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: courses } = await (admin as any)
-    .from('courses')
-    .select('id, title, slug, status, is_published, created_at')
-    .order('created_at', { ascending: false })
-
-  const rows = courses ?? []
+  const rows = await listAllCoursesForAdmin()
+  if (rows === null) redirect('/admin')
 
   return (
     <div className="space-y-6">
@@ -52,7 +47,7 @@ export default async function AdminCoursesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((course: { id: string; title: string; slug: string; status: string | null; created_at: string }) => {
+              {rows.map((course) => {
                 const status = course.status ?? 'draft'
                 return (
                   <tr key={course.id} className="hover:bg-white/[0.02] transition-colors">

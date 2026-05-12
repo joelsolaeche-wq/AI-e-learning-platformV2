@@ -1,16 +1,12 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import { CohortForm } from '@/components/admin/CohortForm'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { listCohortFormOptions } from '@/lib/queries/admin/cohorts.queries'
 
 export default async function NewCohortPage() {
-  const admin = createAdminClient()
-  const [coursesRes, companiesRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
-  ])
+  const options = await listCohortFormOptions()
+  if (options === null) redirect('/admin')
 
   return (
     <div className="max-w-xl space-y-6">
@@ -40,7 +36,7 @@ export default async function NewCohortPage() {
         </div>
       </div>
 
-      <CohortForm courses={coursesRes.data ?? []} companies={companiesRes.data ?? []} />
+      <CohortForm courses={options.courses} companies={options.companies} />
     </div>
   )
 }

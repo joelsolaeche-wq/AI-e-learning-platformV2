@@ -1,16 +1,7 @@
-import { createAdminClient } from '@/lib/supabase/admin'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { FlaskConical, ChevronRight } from 'lucide-react'
-
-type LabRow = {
-  id: string
-  title: string
-  lesson_id: string
-  lesson_title: string
-  course_title: string
-  module_title: string
-  has_lab: boolean
-}
+import { getCompanyLabsView, type CompanyLessonForLabs } from '@/lib/queries/admin/companies.queries'
 
 export default async function CompanyLabsPage({
   params,
@@ -18,18 +9,12 @@ export default async function CompanyLabsPage({
   params: Promise<{ companyId: string }>
 }) {
   const { companyId } = await params
-  const admin = createAdminClient()
 
-  // Get courses assigned to this company
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: assigned } = await (admin as any)
-    .from('course_companies')
-    .select('course_id')
-    .eq('company_id', companyId)
+  const view = await getCompanyLabsView(companyId)
+  if (view === null) redirect('/admin')
+  const { assignedCourseIds, lessons, labByLesson } = view
 
-  const courseIds: string[] = (assigned ?? []).map((r: { course_id: string }) => r.course_id)
-
-  if (courseIds.length === 0) {
+  if (assignedCourseIds.length === 0) {
     return (
       <div className="rounded-2xl border border-border bg-card p-10 text-center">
         <FlaskConical size={32} className="mx-auto mb-3 text-muted-foreground/40" />
@@ -41,29 +26,12 @@ export default async function CompanyLabsPage({
     )
   }
 
-  // Get all lessons from those courses + check if they have a lab
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: lessonsData } = await (admin as any)
-    .from('lessons')
-    .select('id, title, modules!inner(title, course_id, courses!inner(id, title))')
-    .in('modules.course_id', courseIds)
-    .order('title')
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: labsData } = await (admin as any)
-    .from('labs')
-    .select('lesson_id, title')
-
-  const labByLesson = new Map(
-    (labsData ?? []).map((l: { lesson_id: string; title: string }) => [l.lesson_id, l.title]),
-  )
-
   // Group by course
-  type Group = { courseTitle: string; courseId: string; lessons: typeof lessonsData }
+  type Group = { courseTitle: string; courseId: string; lessons: CompanyLessonForLabs[] }
   const grouped = new Map<string, Group>()
 
-  for (const lesson of lessonsData ?? []) {
-    const mod = lesson.modules as { title: string; course_id: string; courses: { id: string; title: string } } | null
+  for (const lesson of lessons) {
+    const mod = lesson.modules
     const courseId = mod?.courses?.id ?? mod?.course_id ?? ''
     const courseTitle = mod?.courses?.title ?? 'Unknown course'
     if (!grouped.has(courseId)) grouped.set(courseId, { courseTitle, courseId, lessons: [] })
@@ -71,8 +39,8 @@ export default async function CompanyLabsPage({
   }
 
   const groups = Array.from(grouped.values()).sort((a, b) => a.courseTitle.localeCompare(b.courseTitle))
-  const totalLessons = (lessonsData ?? []).length
-  const labCount = (lessonsData ?? []).filter((l: { id: string }) => labByLesson.has(l.id)).length
+  const totalLessons = lessons.length
+  const labCount = lessons.filter((l) => labByLesson.has(l.id)).length
 
   return (
     <div className="space-y-6">
@@ -87,12 +55,12 @@ export default async function CompanyLabsPage({
           </h3>
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
             <ul>
-              {group.lessons.map((lesson: { id: string; title: string; modules: { title: string } }) => {
+              {group.lessons.map((lesson) => {
                 const hasLab = labByLesson.has(lesson.id)
                 return (
                   <li key={lesson.id} className="border-b border-border last:border-b-0">
                     <Link
-                      href={`/admin/courses/${(lesson.modules as { course_id?: string })?.course_id ?? ''}/lessons/${lesson.id}`}
+                      href={`/admin/courses/${lesson.modules?.course_id ?? ''}/lessons/${lesson.id}`}
                       className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
