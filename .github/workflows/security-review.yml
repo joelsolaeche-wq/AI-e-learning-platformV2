@@ -7,9 +7,10 @@ name: Security Review
 # findings are reported.
 #
 # Setup required (one-time, repo settings):
-#   1. Add `CLAUDE_API_KEY` as a repo secret
+#   1. Add `ANTHROPIC_API_KEY` as a repo secret
 #      (Settings → Secrets and variables → Actions → New secret).
-#      The key needs Claude API + Claude Code usage enabled.
+#      Use the same Anthropic API key the app uses at runtime
+#      (the one named ANTHROPIC_API_KEY in .env / .env.example).
 #   2. Configure "Require approval for all external contributors"
 #      under Settings → Actions → General → Fork pull request
 #      workflows. The action is not hardened against prompt-injection
@@ -34,4 +35,4 @@ jobs:
       - uses: anthropics/claude-code-security-review@main
         with:
           comment-pr: true
-          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
