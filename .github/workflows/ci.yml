@@ -1,0 +1,33 @@
+name: CI
+
+# Quality gate that runs on every PR and every push to dev/main.
+# Mirrors the local pre-commit hook so a commit that passed locally
+# is unlikely to fail here, and vice versa.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  typecheck-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint

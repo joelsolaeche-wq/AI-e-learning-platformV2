@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Pre-commit hook installed by husky. Runs:
+#   1. lint-staged — ESLint + Prettier on staged files only (fast)
+#   2. tsc --noEmit — typecheck the whole project (slower but catches
+#      type errors before they reach CI / dev / production)
+#
+# If either fails, the commit is aborted. To bypass intentionally,
+# use `git commit --no-verify` — but please don't unless you know why.
+npx lint-staged && npx tsc --noEmit

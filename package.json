@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "supabase:push": "npx supabase db push",
-    "supabase:status": "npx supabase migration list"
+    "supabase:status": "npx supabase migration list",
+    "prepare": "husky"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.2.12",
@@ -48,7 +49,14 @@
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.15",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "supabase": "^2.95.5",
     "typescript": "^5.9.3"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "next lint --fix --file"
+    ]
   }
 }

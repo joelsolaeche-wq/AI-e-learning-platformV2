@@ -10,7 +10,10 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { assertAdmin, assertAdminOrOwner } from '@/lib/auth/guards'
+import { assertAdminOrOwner } from '@/lib/auth/guards'
+import type { Database } from '@/lib/database.types'
+
+type OrganizationRow = Database['public']['Tables']['organizations']['Row']
 
 // ──────────────────────────────────────────────────────────────────────
 // Companies list (admin global view)
@@ -145,7 +148,7 @@ export async function getCompanyForWorkspace(companyId: string): Promise<Company
 // ──────────────────────────────────────────────────────────────────────
 
 export type CompanyOverview = {
-  company: any
+  company: OrganizationRow
   cohortCount: number
   courseCount: number
   memberCount: number

@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft, BarChart3 } from 'lucide-react'
 import { CohortStatsClient } from '@/components/admin/CohortStatsClient'
