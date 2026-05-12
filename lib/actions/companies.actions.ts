@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { assertAdmin } from '@/lib/auth/guards'
+import { NAME_MAX_CHARS } from '@/lib/constants/limits'
 
 export type CompanyActionResult = { error: string | null; success?: boolean; id?: string }
 
@@ -20,7 +21,7 @@ export async function createCompanyAction(
   const website = (formData.get('website') as string | null)?.trim() || null
 
   if (!name) return { error: 'Company name is required.' }
-  if (name.length > 100) return { error: 'Name cannot exceed 100 characters.' }
+  if (name.length > NAME_MAX_CHARS) return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
 
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
@@ -52,7 +53,7 @@ export async function updateCompanyAction(
 
   if (!companyId) return { error: 'Company ID is required.' }
   if (!name) return { error: 'Company name is required.' }
-  if (name.length > 100) return { error: 'Name cannot exceed 100 characters.' }
+  if (name.length > NAME_MAX_CHARS) return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
 
   const admin = createAdminClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

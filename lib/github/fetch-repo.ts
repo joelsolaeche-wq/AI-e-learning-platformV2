@@ -12,6 +12,8 @@
 //
 // Auth: GITHUB_TOKEN (optional). Public-only — no OAuth flow.
 
+import { env } from '@/lib/env'
+
 const GITHUB_API = 'https://api.github.com'
 
 const TOTAL_BYTES_BUDGET = 150_000 // ~150 KB of code text → keeps prompts cheap.
@@ -80,9 +82,8 @@ export function parseGitHubUrl(url: string): { owner: string; repo: string } | n
 }
 
 function authHeaders(): HeadersInit {
-  const token = process.env.GITHUB_TOKEN
-  return token
-    ? { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' }
+  return env.githubToken
+    ? { Authorization: `Bearer ${env.githubToken}`, Accept: 'application/vnd.github+json' }
     : { Accept: 'application/vnd.github+json' }
 }
 

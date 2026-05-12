@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { YoutubeTranscript } from 'youtube-transcript'
 import { normalizeSegments } from '@/lib/transcript/format'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { UUID_RE } from '@/lib/constants/regex'
+import { TRANSCRIPT_RAW_MAX_CHARS } from '@/lib/constants/limits'
 
 // POST /api/admin/lessons/{lessonId}/ingest-transcript
 // Body (optional): { youtube_id?: string, transcript?: string }
@@ -53,7 +53,7 @@ export async function POST(
     if (trimmed.length === 0) {
       return NextResponse.json({ error: 'transcript is empty' }, { status: 400 })
     }
-    if (trimmed.length > 500_000) {
+    if (trimmed.length > TRANSCRIPT_RAW_MAX_CHARS) {
       return NextResponse.json({ error: 'transcript too long (max 500k chars)' }, { status: 400 })
     }
     // Manual paste has no segment metadata; clear segments so the UI

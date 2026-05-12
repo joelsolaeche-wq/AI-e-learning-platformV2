@@ -3,11 +3,13 @@ import { NextResponse } from 'next/server'
 import { streamText } from 'ai'
 import { getAIModel } from '@/lib/ai/model'
 import { formatTimestamp, type TranscriptSegment } from '@/lib/transcript/format'
-
-// Cap the timestamped transcript injected into the system prompt. ~120k chars
-// = ~30k tokens, comfortably within the model's context budget while leaving
-// headroom for the system prompt scaffolding, prior messages, and the answer.
-const MAX_TIMESTAMPED_TRANSCRIPT_CHARS = 120_000
+import { UUID_RE } from '@/lib/constants/regex'
+import {
+  AI_TUTOR_MESSAGE_MAX_CHARS,
+  AI_TUTOR_HISTORY_MESSAGES,
+  AI_TUTOR_MAX_OUTPUT_TOKENS,
+  AI_TUTOR_TRANSCRIPT_PROMPT_MAX_CHARS,
+} from '@/lib/constants/limits'
 
 function buildTimestampedTranscript(segments: TranscriptSegment[]): string {
   // Format each segment as a single line: `[mm:ss] segment text`. The
@@ -16,7 +18,7 @@ function buildTimestampedTranscript(segments: TranscriptSegment[]): string {
   const lines: string[] = []
   for (const seg of segments) {
     const line = `[${formatTimestamp(seg.start)}] ${seg.text}`
-    if (used + line.length + 1 > MAX_TIMESTAMPED_TRANSCRIPT_CHARS) {
+    if (used + line.length + 1 > AI_TUTOR_TRANSCRIPT_PROMPT_MAX_CHARS) {
       lines.push('… [transcript truncated for prompt budget]')
       break
     }
@@ -26,7 +28,6 @@ function buildTimestampedTranscript(segments: TranscriptSegment[]): string {
   return lines.join('\n')
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -59,8 +60,11 @@ export async function POST(request: Request) {
   }
 
   // T-6-03: Limit user message length to prevent prompt injection payloads.
-  if (message.length > 2000) {
-    return NextResponse.json({ error: 'Message too long (max 2000 chars)' }, { status: 400 })
+  if (message.length > AI_TUTOR_MESSAGE_MAX_CHARS) {
+    return NextResponse.json(
+      { error: `Message too long (max ${AI_TUTOR_MESSAGE_MAX_CHARS} chars)` },
+      { status: 400 },
+    )
   }
 
   // T-6-02: Enrollment authorization — explicit enrollment check in addition to
@@ -190,7 +194,7 @@ export async function POST(request: Request) {
     .select('role, content')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
-    .limit(20)
+    .limit(AI_TUTOR_HISTORY_MESSAGES)
 
   if (historyError) {
     console.error('[tutor chat] message history error', historyError)
@@ -285,7 +289,7 @@ ${transcriptSection}`
   // ~600 tokens; 1500 leaves headroom for code blocks.
   const result = await streamText({
     model: getAIModel(),
-    maxTokens: 1500,
+    maxTokens: AI_TUTOR_MAX_OUTPUT_TOKENS,
     system: systemPrompt,
     messages: [
       ...priorMessages,

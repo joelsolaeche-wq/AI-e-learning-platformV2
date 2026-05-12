@@ -17,6 +17,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { streamText } from 'ai'
 import type { LanguageModelV1 } from '@ai-sdk/provider'
 import type { z } from 'zod'
+import { env } from '@/lib/env'
 
 type ProviderName = 'anthropic' | 'openrouter'
 
@@ -26,14 +27,6 @@ const ANTHROPIC_MODEL_ID = 'claude-sonnet-4-6'
 // https://openrouter.ai/models?supported_parameters=structured_outputs
 const OPENROUTER_MODEL_ID = 'anthropic/claude-sonnet-4.6'
 
-function resolveProvider(): ProviderName {
-  const raw = (process.env.AI_PROVIDER ?? 'openrouter').toLowerCase().trim()
-  if (raw === 'anthropic' || raw === 'openrouter') return raw
-  throw new Error(
-    `[ai/model] Unknown AI_PROVIDER="${raw}". Use "anthropic" or "openrouter".`,
-  )
-}
-
 /**
  * Returns the LanguageModelV1 instance for the active AI provider.
  * Used by streamText, generateObject, and generateText callsites.
@@ -42,31 +35,27 @@ function resolveProvider(): ProviderName {
  * fail loudly here rather than producing empty/weird responses downstream.
  */
 export function getAIModel(): LanguageModelV1 {
-  const provider = resolveProvider()
-
-  if (provider === 'anthropic') {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) {
+  if (env.aiProvider === 'anthropic') {
+    if (!env.anthropicApiKey) {
       throw new Error(
         '[ai/model] AI_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.',
       )
     }
-    return createAnthropic({ apiKey })(ANTHROPIC_MODEL_ID)
+    return createAnthropic({ apiKey: env.anthropicApiKey })(ANTHROPIC_MODEL_ID)
   }
 
   // openrouter
-  const apiKey = process.env.OPENROUTER_API_KEY
-  if (!apiKey) {
+  if (!env.openrouterApiKey) {
     throw new Error(
       '[ai/model] AI_PROVIDER=openrouter but OPENROUTER_API_KEY is not set.',
     )
   }
-  return createOpenRouter({ apiKey })(OPENROUTER_MODEL_ID)
+  return createOpenRouter({ apiKey: env.openrouterApiKey })(OPENROUTER_MODEL_ID)
 }
 
 /** Exposed for diagnostics / logging. */
 export function getActiveProvider(): ProviderName {
-  return resolveProvider()
+  return env.aiProvider
 }
 
 // ---------------------------------------------------------------------------

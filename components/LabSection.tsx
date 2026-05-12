@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Beaker, GitBranch, FileText, FileType, Loader2, Star, AlertCircle, RotateCcw, Upload, CheckCircle2 } from 'lucide-react'
+import { LAB_TEXT_MIN_CHARS, LAB_TEXT_MAX_CHARS } from '@/lib/constants/limits'
 
 export type LabRubricItem = {
   id: string
@@ -45,8 +46,6 @@ interface Props {
 }
 
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/
-const MIN_TEXT_LEN = 200
-const MAX_TEXT_LEN = 30_000
 
 function describeSubmission(submission: LabSubmission): string {
   if (submission.submission_type === 'github') {
@@ -102,12 +101,12 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
       body.githubUrl = trimmed
     } else if (submissionType === 'text') {
       const trimmed = textContent.trim()
-      if (trimmed.length < MIN_TEXT_LEN) {
-        setError(`Written response must be at least ${MIN_TEXT_LEN} characters.`)
+      if (trimmed.length < LAB_TEXT_MIN_CHARS) {
+        setError(`Written response must be at least ${LAB_TEXT_MIN_CHARS} characters.`)
         return
       }
-      if (trimmed.length > MAX_TEXT_LEN) {
-        setError(`Written response too long (max ${MAX_TEXT_LEN} characters).`)
+      if (trimmed.length > LAB_TEXT_MAX_CHARS) {
+        setError(`Written response too long (max ${LAB_TEXT_MAX_CHARS} characters).`)
         return
       }
       body.textContent = trimmed
@@ -287,7 +286,7 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
             <p className="mt-3 mb-3 text-[12.5px] text-muted-foreground">
               {submissionType === 'github' && 'Paste a public GitHub URL — the AI grades it against the rubric above.'}
               {submissionType === 'pdf' && 'Upload a PDF — the AI reads it directly and grades against the rubric above.'}
-              {submissionType === 'text' && `Write 200–${MAX_TEXT_LEN.toLocaleString()} characters — the AI grades the response against the rubric above.`}
+              {submissionType === 'text' && `Write 200–${LAB_TEXT_MAX_CHARS.toLocaleString()} characters — the AI grades the response against the rubric above.`}
             </p>
 
             {submissionType === 'github' && (
@@ -347,9 +346,9 @@ export function LabSection({ lessonId, lab, latestSubmission }: Props) {
                   className="resize-y rounded-xl border border-input bg-background/60 px-4 py-3 text-[14px] outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
                 />
                 <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
-                  <span className={textContent.length > 0 && textContent.length < MIN_TEXT_LEN ? 'text-amber-400' : ''}>
-                    {textContent.length.toLocaleString()} / {MAX_TEXT_LEN.toLocaleString()} chars
-                    {textContent.length > 0 && textContent.length < MIN_TEXT_LEN && ` · ${MIN_TEXT_LEN - textContent.length} more to submit`}
+                  <span className={textContent.length > 0 && textContent.length < LAB_TEXT_MIN_CHARS ? 'text-amber-400' : ''}>
+                    {textContent.length.toLocaleString()} / {LAB_TEXT_MAX_CHARS.toLocaleString()} chars
+                    {textContent.length > 0 && textContent.length < LAB_TEXT_MIN_CHARS && ` · ${LAB_TEXT_MIN_CHARS - textContent.length} more to submit`}
                   </span>
                   <SubmitButton submitting={submitting} onClick={handleSubmit} label="Submit response" />
                 </div>

@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { env } from '@/lib/env'
+import { NAME_MAX_CHARS, PASSWORD_MIN_CHARS } from '@/lib/constants/limits'
 
 export type ProfileActionResult = {
   error: string | null
@@ -20,8 +22,8 @@ export async function updateProfileAction(
   const fullName = (formData.get('full_name') as string | null)?.trim() ?? ''
   const avatarUrl = (formData.get('avatar_url') as string | null)?.trim() ?? null
 
-  if (fullName.length > 100) {
-    return { error: 'Name cannot exceed 100 characters.' }
+  if (fullName.length > NAME_MAX_CHARS) {
+    return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,9 +47,8 @@ export async function requestPasswordResetAction(
   if (!email) return { error: 'Email is required.' }
 
   const supabase = await createClient()
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? ''
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${siteUrl}/auth/callback?next=/auth/update-password`,
+    redirectTo: `${env.siteUrl}/auth/callback?next=/auth/update-password`,
   })
 
   if (error) return { error: error.message }
@@ -62,8 +63,8 @@ export async function updatePasswordAction(
   const password = formData.get('password') as string
   const confirm = formData.get('confirm') as string
 
-  if (!password || password.length < 8) {
-    return { error: 'Password must be at least 8 characters.' }
+  if (!password || password.length < PASSWORD_MIN_CHARS) {
+    return { error: `Password must be at least ${PASSWORD_MIN_CHARS} characters.` }
   }
   if (password !== confirm) {
     return { error: 'Passwords do not match.' }

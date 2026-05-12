@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { ADMIN_USER_SEARCH_LIMIT } from '@/lib/constants/limits'
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
@@ -22,13 +23,13 @@ export async function GET(req: NextRequest) {
   if (!email) return NextResponse.json({ error: 'email param required' }, { status: 400 })
 
   const admin = createAdminClient()
-  // Search by partial email or full_name match (up to 10 results)
+  // Search by partial email or full_name match
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (admin as any)
     .from('profiles')
     .select('id, email, full_name')
     .or(`email.ilike.%${email.toLowerCase().trim()}%,full_name.ilike.%${email.trim()}%`)
-    .limit(10)
+    .limit(ADMIN_USER_SEARCH_LIMIT)
 
   if (!data || data.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ results: data })

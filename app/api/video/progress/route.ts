@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import type { TablesInsert } from '@/lib/database.types'
+import { UUID_RE } from '@/lib/constants/regex'
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -38,7 +39,6 @@ export async function POST(request: Request) {
 
   // WR-06: Validate UUID format early — malformed lessonId causes PostgREST to
   // return a query error which maps to a misleading 403. Return 400 instead.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!UUID_RE.test(lessonId)) {
     return NextResponse.json({ error: 'Invalid lessonId' }, { status: 400 })
   }

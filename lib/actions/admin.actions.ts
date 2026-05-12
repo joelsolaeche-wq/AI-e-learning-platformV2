@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { randomBytes } from 'crypto'
 import { assertAdmin, assertAdminOrOwner } from '@/lib/auth/guards'
 import { ALL_ROLES } from '@/lib/auth/roles'
+import { EMAIL_RE } from '@/lib/constants/regex'
+import { NAME_MAX_CHARS, PASSWORD_MIN_CHARS } from '@/lib/constants/limits'
 
 export type AdminActionResult = { error: string | null; success?: boolean }
 
@@ -122,7 +124,7 @@ export async function adminUpdateUserAction(
 
   if (!userId) return { error: 'User ID is required.' }
   if (!(ALL_ROLES as readonly string[]).includes(role)) return { error: 'Invalid role.' }
-  if (fullName && fullName.length > 100) return { error: 'Name cannot exceed 100 characters.' }
+  if (fullName && fullName.length > NAME_MAX_CHARS) return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
   if (role === 'company_owner' && !orgId) return { error: 'A company is required for the Company Owner role.' }
 
   const admin = createAdminClient()
@@ -162,10 +164,8 @@ export async function createUserAction(
   const fullName = (formData.get('full_name') as string | null)?.trim() || null
   const role = (formData.get('role') as string) || 'learner'
   const orgId = (formData.get('org_id') as string | null) || null
-
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!email || !EMAIL_RE.test(email)) return { error: 'Valid email is required.' }
-  if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
+  if (password.length < PASSWORD_MIN_CHARS) return { error: `Password must be at least ${PASSWORD_MIN_CHARS} characters.` }
 
   // Role-assignment matrix: admins can create users of any role; company_owners
   // can only create learners. Without this gate, a company_owner could submit
@@ -211,7 +211,6 @@ export async function importUsersFromCSVAction(
   }
 
   const admin = createAdminClient()
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   const VALID_ROLES = ['learner', 'instructor', 'admin']
   let created = 0
   let skipped = 0

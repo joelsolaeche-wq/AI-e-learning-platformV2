@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-// 25 MB — also enforced at the storage bucket level.
-const MAX_PDF_SIZE = 25 * 1024 * 1024
+import { LAB_PDF_MAX_BYTES } from '@/lib/constants/limits'
 
 // POST /api/labs/upload — multipart form-data with a single `file` field.
 // Verifies the caller is logged in, rejects non-PDFs, and stores the file at
@@ -33,9 +31,9 @@ export async function POST(request: Request) {
   if (file.size === 0) {
     return NextResponse.json({ error: 'Empty file.' }, { status: 400 })
   }
-  if (file.size > MAX_PDF_SIZE) {
+  if (file.size > LAB_PDF_MAX_BYTES) {
     return NextResponse.json(
-      { error: `File too large. Max ${MAX_PDF_SIZE / (1024 * 1024)} MB.` },
+      { error: `File too large. Max ${LAB_PDF_MAX_BYTES / (1024 * 1024)} MB.` },
       { status: 413 },
     )
   }
