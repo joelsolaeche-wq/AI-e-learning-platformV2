@@ -59,14 +59,13 @@ export async function signInAction(_prevState: AuthActionResult, formData: FormD
 
   // company_owner goes directly to their company workspace
   if (signInData.user) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: profile } = await (supabase as any)
+    const { data: profile } = await supabase
       .from('profiles')
       .select('role, org_id')
       .eq('id', signInData.user.id)
-      .maybeSingle()
+      .maybeSingle<{ role: string; org_id: string | null }>()
 
-    if (profile?.role === 'company_owner' && profile?.org_id) {
+    if (profile?.role === 'company_owner' && profile.org_id) {
       revalidatePath('/', 'layout')
       redirect(`/admin/companies/${profile.org_id}`)
     }

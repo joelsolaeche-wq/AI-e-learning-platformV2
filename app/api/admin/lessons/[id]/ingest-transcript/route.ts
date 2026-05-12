@@ -28,12 +28,11 @@ export async function POST(
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
+  const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single()
+    .single<{ role: string }>()
   if (profile?.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -59,8 +58,7 @@ export async function POST(
     // Manual paste has no segment metadata; clear segments so the UI
     // falls back to flat-text rendering. transcript_segments was added in
     // 20260509000001 — cast until database.types.ts is regenerated.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateError } = await (admin as any)
+    const { error: updateError } = await admin
       .from('lessons')
       .update({ transcript: trimmed, transcript_segments: null })
       .eq('id', lessonId)
@@ -158,8 +156,7 @@ export async function POST(
 
   // transcript_segments was added in 20260509000001 — cast until
   // database.types.ts is regenerated.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: updateError } = await (admin as any)
+  const { error: updateError } = await admin
     .from('lessons')
     .update(updates)
     .eq('id', lessonId)

@@ -26,8 +26,7 @@ export async function createCompanyAction(
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (admin as any)
+  const { data, error } = await admin
     .from('organizations')
     .insert({ name, slug, description, logo_url, website })
     .select('id')
@@ -56,8 +55,7 @@ export async function updateCompanyAction(
   if (name.length > NAME_MAX_CHARS) return { error: `Name cannot exceed ${NAME_MAX_CHARS} characters.` }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('organizations')
     .update({ name, description, logo_url, website })
     .eq('id', companyId)
@@ -73,8 +71,7 @@ export async function archiveCompanyAction(companyId: string): Promise<CompanyAc
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('organizations')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', companyId)
@@ -90,8 +87,7 @@ export async function restoreCompanyAction(companyId: string): Promise<CompanyAc
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('organizations')
     .update({ deleted_at: null })
     .eq('id', companyId)
@@ -106,11 +102,14 @@ async function assertAdminOrCompanyOwnerFor(companyId: string): Promise<boolean>
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from('profiles').select('role, org_id').eq('id', user.id).single()
-  if (profile?.role === 'admin') return true
-  if (profile?.role === 'company_owner' && profile?.org_id === companyId) return true
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, org_id')
+    .eq('id', user.id)
+    .single<{ role: string; org_id: string | null }>()
+  if (!profile) return false
+  if (profile.role === 'admin') return true
+  if (profile.role === 'company_owner' && profile.org_id === companyId) return true
   return false
 }
 
@@ -121,8 +120,7 @@ export async function assignCourseToCompanyAction(
   if (!(await assertAdminOrCompanyOwnerFor(companyId))) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('course_companies')
     .upsert({ course_id: courseId, company_id: companyId })
 
@@ -139,8 +137,7 @@ export async function unassignCourseFromCompanyAction(
   if (!(await assertAdminOrCompanyOwnerFor(companyId))) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('course_companies')
     .delete()
     .eq('course_id', courseId)

@@ -54,8 +54,7 @@ export async function listUsers(params: UserListParams): Promise<UserListResult 
   const offset = (Math.max(1, params.page) - 1) * PAGE_SIZE
   const admin = createAdminClient()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = (admin as any)
+  let query = admin
     .from('profiles')
     .select('id, email, full_name, role, is_active, avatar_url, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -99,14 +98,12 @@ export async function getUserById(
   const admin = createAdminClient()
 
   const [userRes, companiesRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin
       .from('profiles')
       .select('id, email, full_name, role, is_active, org_id')
       .eq('id', userId)
       .single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin
       .from('organizations')
       .select('id, name')
       .is('deleted_at', null)
@@ -125,8 +122,7 @@ export async function listCompaniesForForm(): Promise<CompanyOption[] | null> {
   if (!caller) return null
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from('organizations')
     .select('id, name')
     .is('deleted_at', null)
@@ -148,8 +144,7 @@ export type UserSearchRow = { id: string; email: string; full_name: string | nul
 
 export async function searchUsersForAdmin(query: string): Promise<UserSearchRow[]> {
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from('profiles')
     .select('id, email, full_name')
     .or(`email.ilike.%${query.toLowerCase().trim()}%,full_name.ilike.%${query.trim()}%`)

@@ -98,13 +98,12 @@ export default async function TeamPage() {
   // org_id is null OR when RLS hides the row.
   let ownOrg: { name: string; slug: string } | null = null
   if (baseProfile?.org_id) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: orgData } = await (supabase as any)
+    const { data: orgData } = await supabase
       .from('organizations')
       .select('name, slug')
       .eq('id', baseProfile.org_id)
-      .maybeSingle()
-    ownOrg = orgData ? { name: orgData.name as string, slug: orgData.slug as string } : null
+      .maybeSingle<{ name: string; slug: string }>()
+    ownOrg = orgData ? { name: orgData.name, slug: orgData.slug } : null
   }
 
   const profile: ProfileRow | null = baseProfile

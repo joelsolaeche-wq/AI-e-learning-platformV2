@@ -45,8 +45,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
   const admin = createAdminClient()
 
   // 1. Load submission + lab + rubric + lesson context (service_role bypasses RLS).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: submissionRaw, error: subErr } = await (admin as any)
+  const { data: submissionRaw, error: subErr } = await admin
     .from('lab_submissions')
     .select('id, lab_id, github_url, pdf_path, text_content, submission_type, status')
     .eq('id', submissionId)
@@ -70,8 +69,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
     return { ok: false, submissionId, error: `Already ${submission.status}.` }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: labRaw } = await (admin as any)
+  const { data: labRaw } = await admin
     .from('labs')
     .select('id, title, brief_md, lesson_id')
     .eq('id', submission.lab_id)
@@ -87,8 +85,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
     return { ok: false, submissionId, error: 'Lab no longer exists.' }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: rubricRaw } = await (admin as any)
+  const { data: rubricRaw } = await admin
     .from('lab_rubric_items')
     .select('id, position, criterion, description, weight')
     .eq('lab_id', lab.id)
@@ -106,8 +103,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
     return { ok: false, submissionId, error: 'Lab has no rubric items.' }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: lessonRaw } = await (admin as any)
+  const { data: lessonRaw } = await admin
     .from('lessons')
     .select('id, title, transcript')
     .eq('id', lab.lesson_id)
@@ -115,8 +111,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
   const lesson = lessonRaw as { title: string; transcript: string | null } | null
 
   // 2. Mark evaluating BEFORE the slow operations so the UI can reflect it.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: markErr } = await (admin as any)
+  const { error: markErr } = await admin
     .from('lab_submissions')
     .update({ status: 'evaluating' })
     .eq('id', submissionId)
@@ -303,13 +298,11 @@ Grade the PDF now.`
       feedback_md: it.feedback,
     }))
     // Clear any prior scores in case this is a re-evaluation.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (admin as any)
+    await admin
       .from('lab_submission_scores')
       .delete()
       .eq('submission_id', submissionId)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: scoreInsertErr } = await (admin as any)
+    const { error: scoreInsertErr } = await admin
       .from('lab_submission_scores')
       .insert(scoreRows)
     if (scoreInsertErr) {
@@ -317,8 +310,7 @@ Grade the PDF now.`
     }
 
     // 8. Persist the submission summary.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: finalUpdateErr } = await (admin as any)
+    const { error: finalUpdateErr } = await admin
       .from('lab_submissions')
       .update({
         status: 'scored',
@@ -352,8 +344,7 @@ Grade the PDF now.`
 
 async function markFailed(submissionId: string, errorMessage: string) {
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (admin as any)
+  await admin
     .from('lab_submissions')
     .update({
       status: 'failed',

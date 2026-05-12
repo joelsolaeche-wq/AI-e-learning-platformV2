@@ -53,8 +53,7 @@ export async function saveLabAction(
 
   // 1. Upsert the lab. lessons.id is the natural key here because labs has
   //    UNIQUE(lesson_id) and we want one lab per lesson.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: existingLab, error: fetchErr } = await (admin as any)
+  const { data: existingLab, error: fetchErr } = await admin
     .from('labs')
     .select('id')
     .eq('lesson_id', lessonId)
@@ -65,15 +64,13 @@ export async function saveLabAction(
   let labId: string
   if (existingLab) {
     labId = existingLab.id
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: updateErr } = await (admin as any)
+    const { error: updateErr } = await admin
       .from('labs')
       .update({ title: cleanTitle, brief_md: briefMd, updated_at: new Date().toISOString() })
       .eq('id', labId)
     if (updateErr) return { error: updateErr.message }
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: created, error: insertErr } = await (admin as any)
+    const { data: created, error: insertErr } = await admin
       .from('labs')
       .insert({ lesson_id: lessonId, title: cleanTitle, brief_md: briefMd })
       .select('id')
@@ -86,8 +83,7 @@ export async function saveLabAction(
   //    means historic per-criterion scores tied to deleted items vanish —
   //    that's acceptable: edits invalidate prior grading anyway, and the
   //    overall stars on lab_submissions row are preserved as a snapshot.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: deleteErr } = await (admin as any)
+  const { error: deleteErr } = await admin
     .from('lab_rubric_items')
     .delete()
     .eq('lab_id', labId)
@@ -101,8 +97,7 @@ export async function saveLabAction(
       description: it.description,
       weight: it.weight,
     }))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error: insertItemsErr } = await (admin as any)
+    const { error: insertItemsErr } = await admin
       .from('lab_rubric_items')
       .insert(rows)
     if (insertItemsErr) return { error: insertItemsErr.message }
@@ -119,8 +114,7 @@ export async function deleteLabAction(lessonId: string): Promise<LabActionResult
   if (!caller) return { error: 'Unauthorized.' }
 
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (admin as any)
+  const { error } = await admin
     .from('labs')
     .delete()
     .eq('lesson_id', lessonId)

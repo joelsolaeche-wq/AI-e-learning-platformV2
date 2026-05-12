@@ -27,8 +27,7 @@ export async function listAllCohortsForAdmin(): Promise<AdminCohortListRow[] | n
   const caller = await assertAdmin()
   if (!caller) return null
   const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (admin as any)
+  const { data } = await admin
     .from('cohorts')
     .select(`
       id, title, status, starts_at, ends_at, max_seats, modality,
@@ -54,10 +53,8 @@ export async function listCohortFormOptions(): Promise<CohortFormOptions | null>
 
   const admin = createAdminClient()
   const [coursesRes, companiesRes] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
+    admin.from('courses').select('id, title').eq('is_published', true).order('title'),
+    admin.from('organizations').select('id, name').order('name'),
   ])
   return {
     courses: (coursesRes.data ?? []) as Array<{ id: string; title: string }>,
@@ -71,7 +68,6 @@ export async function listCohortFormOptions(): Promise<CohortFormOptions | null>
 // ──────────────────────────────────────────────────────────────────────
 
 export type AdminCohortDetail = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cohort: any
   formOptions: CohortFormOptions
   selectedCourseIds: string[]
@@ -106,22 +102,16 @@ export async function getCohortDetailForAdmin(
     enrollmentsRes,
     invitationsRes,
   ] = await Promise.all([
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohorts').select('*').eq('id', cohortId).single(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('courses').select('id, title').eq('is_published', true).order('title'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('organizations').select('id, name').order('name'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any).from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin.from('cohorts').select('*').eq('id', cohortId).single(),
+    admin.from('courses').select('id, title').eq('is_published', true).order('title'),
+    admin.from('organizations').select('id, name').order('name'),
+    admin.from('cohort_courses').select('course_id').eq('cohort_id', cohortId),
+    admin
       .from('enrollments')
       .select('id, status, enrolled_at, profiles(id, email, full_name, role)')
       .eq('cohort_id', cohortId)
       .order('enrolled_at', { ascending: false }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    admin
       .from('cohort_invitations')
       .select('id, code, max_uses, uses_count, expires_at, created_at')
       .eq('cohort_id', cohortId)
