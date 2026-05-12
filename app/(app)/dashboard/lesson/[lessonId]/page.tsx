@@ -1,7 +1,6 @@
 // app/(app)/dashboard/lesson/[lessonId]/page.tsx
 import { notFound, redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/database.types'
 import type { Message } from 'ai'
 import { LessonExperience } from '@/components/LessonExperience'
@@ -86,8 +85,6 @@ export default async function LessonPage({ params }: LessonPageProps) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
-
-  const admin = createAdminClient()
 
   // Phase 1: lesson (with module + course join) + lesson progress + quiz + chat
   const [lessonResult, progressResult, quizResult, chatHistory] = await Promise.all([
@@ -191,8 +188,11 @@ export default async function LessonPage({ params }: LessonPageProps) {
     lab_submission_scores: Array<{ rubric_item_id: string; stars: number; feedback_md: string }>
   }
 
+  // RLS on `labs` permits enrolled users to read; service-role isn't needed
+  // here. See migration 20260504000002_create_labs.sql ("Enrolled users can
+  // view labs" + "Enrolled users can view lab rubric items").
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const labResult = await (admin as any)
+  const labResult = await (supabase as any)
     .from('labs')
     .select('id, title, brief_md, lab_rubric_items(id, position, criterion, description, weight)')
     .eq('lesson_id', lessonId)
@@ -228,8 +228,11 @@ export default async function LessonPage({ params }: LessonPageProps) {
     scores: Array<{ rubric_item_id: string; stars: number; feedback_md: string }>
   } | null = null
   if (lab) {
+    // RLS on `lab_submissions` already restricts each row to its owner
+    // ("Users can view their own lab submissions"), so the .eq('user_id',
+    // user.id) below is belt-and-suspenders on top of RLS.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const subResult = await (admin as any)
+    const subResult = await (supabase as any)
       .from('lab_submissions')
       .select(
         'id, status, submission_type, github_url, pdf_path, text_content, overall_stars, total_score, max_score, summary_md, error_message, submitted_at, scored_at, lab_submission_scores(rubric_item_id, stars, feedback_md)',

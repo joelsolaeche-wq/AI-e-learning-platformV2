@@ -2,28 +2,14 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ChevronLeft } from 'lucide-react'
 import { NewUserForm } from '@/components/admin/NewUserForm'
-import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { listCompaniesForForm } from '@/lib/queries/admin/users.queries'
 
 export default async function NewUserPage() {
-  // Admin-only: middleware lets company_owner reach /admin/* too, but this
-  // global new-user form exposes every role. Company owners create members
-  // via /admin/companies/[companyId]/members/new (locked to role=learner).
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: callerProfile } = await (supabase as any)
-    .from('profiles').select('role').eq('id', user.id).single()
-  if (callerProfile?.role !== 'admin') redirect('/admin')
-
-  const admin = createAdminClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: companies } = await (admin as any)
-    .from('organizations')
-    .select('id, name')
-    .is('deleted_at', null)
-    .order('name')
+  // Admin-only. Middleware lets company_owner reach /admin/* too, but this
+  // global new-user form exposes every role; company_owner has a scoped
+  // alternative at /admin/companies/[companyId]/members/new (locked to learner).
+  const companies = await listCompaniesForForm()
+  if (companies === null) redirect('/admin')
 
   return (
     <div className="max-w-md space-y-6">
@@ -36,7 +22,7 @@ export default async function NewUserPage() {
         </Link>
         <h1 className="mt-3 text-2xl font-bold">New user</h1>
       </div>
-      <NewUserForm companies={companies ?? []} />
+      <NewUserForm companies={companies} />
     </div>
   )
 }
