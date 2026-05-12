@@ -1,10 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/database.types'
+import { env } from '@/lib/env'
 
 export function createAdminClient() {
-  return createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  )
+  if (!env.supabaseServiceRoleKey) {
+    throw new Error(
+      '[supabase/admin] SUPABASE_SERVICE_ROLE_KEY is not set. createAdminClient() ' +
+        'is for server-only privileged access and cannot run without it.',
+    )
+  }
+  return createClient<Database>(env.supabaseUrl, env.supabaseServiceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
 }

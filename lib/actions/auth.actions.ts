@@ -3,6 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { env } from '@/lib/env'
+import { PASSWORD_MIN_CHARS } from '@/lib/constants/limits'
 
 export type AuthActionResult = {
   error: string | null
@@ -17,8 +19,8 @@ export async function signUpAction(_prevState: AuthActionResult, formData: FormD
     return { error: 'Email and password are required.' }
   }
 
-  if (password.length < 8) {
-    return { error: 'Password must be at least 8 characters.' }
+  if (password.length < PASSWORD_MIN_CHARS) {
+    return { error: `Password must be at least ${PASSWORD_MIN_CHARS} characters.` }
   }
 
   const supabase = await createClient()
@@ -28,7 +30,7 @@ export async function signUpAction(_prevState: AuthActionResult, formData: FormD
     password,
     options: {
       data: { full_name: fullName ?? '' },
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/auth/callback`,
+      emailRedirectTo: `${env.siteUrl}/auth/callback`,
     },
   })
 

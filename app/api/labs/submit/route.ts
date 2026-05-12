@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { evaluateSubmission } from '@/lib/labs/evaluate'
+import { UUID_RE } from '@/lib/constants/regex'
+import { LAB_TEXT_MIN_CHARS, LAB_TEXT_MAX_CHARS } from '@/lib/constants/limits'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const GITHUB_URL_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/
-const MIN_TEXT_LEN = 200
-const MAX_TEXT_LEN = 30_000
 
 // Bumped because we run evaluation synchronously in this handler.
 export const maxDuration = 90
@@ -83,15 +82,15 @@ export async function POST(request: Request) {
   } else {
     // text
     const text = (body.textContent ?? '').trim()
-    if (text.length < MIN_TEXT_LEN) {
+    if (text.length < LAB_TEXT_MIN_CHARS) {
       return NextResponse.json(
-        { error: `Written response must be at least ${MIN_TEXT_LEN} characters.` },
+        { error: `Written response must be at least ${LAB_TEXT_MIN_CHARS} characters.` },
         { status: 400 },
       )
     }
-    if (text.length > MAX_TEXT_LEN) {
+    if (text.length > LAB_TEXT_MAX_CHARS) {
       return NextResponse.json(
-        { error: `Written response too long (max ${MAX_TEXT_LEN} chars).` },
+        { error: `Written response too long (max ${LAB_TEXT_MAX_CHARS} chars).` },
         { status: 400 },
       )
     }

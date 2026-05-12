@@ -3,13 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateJSON } from '@/lib/ai/model'
 import { z } from 'zod'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-// Cap the slice of transcript we feed the model. 24k chars is roughly
-// 6k tokens — enough for a 30-min lesson once whitespace-collapsed, well
-// under context limits, keeps cost ≪ $0.05 per draft.
-const DRAFT_TRANSCRIPT_MAX_CHARS = 24_000
+import { UUID_RE } from '@/lib/constants/regex'
+import {
+  AI_LAB_DRAFT_TRANSCRIPT_MAX_CHARS,
+  AI_LAB_DRAFT_MAX_OUTPUT_TOKENS,
+} from '@/lib/constants/limits'
 
 const RubricItemSchema = z.object({
   criterion: z.string().min(2).max(200),
@@ -70,7 +68,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const transcriptSlice = String(lesson.transcript).slice(0, DRAFT_TRANSCRIPT_MAX_CHARS)
+  const transcriptSlice = String(lesson.transcript).slice(0, AI_LAB_DRAFT_TRANSCRIPT_MAX_CHARS)
 
   const systemPrompt = `You design hands-on coding labs for an enterprise AI engineering curriculum. Given a lesson transcript, propose:
 - A short lab title (≤80 chars).
@@ -84,7 +82,7 @@ Rules:
 
   const userPrompt = `Lesson title: ${lesson.title}
 
-Lesson transcript (first ${DRAFT_TRANSCRIPT_MAX_CHARS} chars):
+Lesson transcript (first ${AI_LAB_DRAFT_TRANSCRIPT_MAX_CHARS} chars):
 """
 ${transcriptSlice}
 """
@@ -110,7 +108,7 @@ Generate the lab spec now.`
       // 8000-char brief (~2000 tok) + up to 8 items × 1000-char descriptions
       // (~250 tok each = up to 2000 tok) + title + JSON envelope. 6000 leaves
       // headroom so the model never truncates mid-JSON.
-      maxTokens: 6000,
+      maxTokens: AI_LAB_DRAFT_MAX_OUTPUT_TOKENS,
     })
 
     return NextResponse.json({

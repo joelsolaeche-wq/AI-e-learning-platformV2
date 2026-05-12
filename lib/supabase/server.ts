@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { Database } from '@/lib/database.types'
+import { env } from '@/lib/env'
 
 /**
  * Creates a Supabase client for server contexts:
@@ -16,8 +17,8 @@ export async function createClient() {
   const cookieStore = await cookies()   // await is required in Next.js 15
 
   return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    env.supabaseUrl,
+    env.supabaseAnonKey,
     {
       cookies: {
         getAll() {

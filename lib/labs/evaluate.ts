@@ -13,12 +13,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateJSON } from '@/lib/ai/model'
 import { z } from 'zod'
 import { fetchPublicRepoSnapshot, type GitHubFetchError } from '@/lib/github/fetch-repo'
-
-// 90s ceiling for the model call. The route handler should also have
-// `export const maxDuration = 90` so Vercel doesn't kill us early.
-const EVAL_TIMEOUT_MS = 90_000
-const EVAL_TRANSCRIPT_MAX_CHARS = 12_000 // grading prompt is dominated by the repo snapshot
-const REPO_SNAPSHOT_CHAR_BUDGET = 120_000 // leaves headroom for prompt + JSON
+import {
+  AI_LAB_EVAL_TIMEOUT_MS,
+  AI_LAB_EVAL_TRANSCRIPT_MAX_CHARS,
+  AI_LAB_EVAL_REPO_BUDGET_CHARS,
+  AI_LAB_EVAL_MAX_OUTPUT_TOKENS,
+} from '@/lib/constants/limits'
 
 export type EvaluateResult =
   | { ok: true; submissionId: string }
@@ -126,7 +126,7 @@ export async function evaluateSubmission(submissionId: string): Promise<Evaluate
 
   try {
     // 3. Build the type-specific grading prompt.
-    const transcriptSlice = (lesson?.transcript ?? '').slice(0, EVAL_TRANSCRIPT_MAX_CHARS)
+    const transcriptSlice = (lesson?.transcript ?? '').slice(0, AI_LAB_EVAL_TRANSCRIPT_MAX_CHARS)
     const rubricText = rubric
       .map(
         (r) =>
@@ -161,7 +161,7 @@ Return ONE rubricItemId per item. The set of rubricItemIds you return must exact
 
     const lessonContextPreamble = `LESSON: ${lesson?.title ?? '(unknown)'}
 
-LESSON TRANSCRIPT (first ${EVAL_TRANSCRIPT_MAX_CHARS} chars):
+LESSON TRANSCRIPT (first ${AI_LAB_EVAL_TRANSCRIPT_MAX_CHARS} chars):
 """
 ${transcriptSlice}
 """
@@ -189,7 +189,7 @@ ${rubricText}
         await markFailed(submissionId, 'No code-text files were found in this repo.')
         return { ok: false, submissionId, error: 'No code-text files were found in this repo.' }
       }
-      const repoText = renderSnapshotForPrompt(snapshot.fetchedFiles, REPO_SNAPSHOT_CHAR_BUDGET)
+      const repoText = renderSnapshotForPrompt(snapshot.fetchedFiles, AI_LAB_EVAL_REPO_BUDGET_CHARS)
       userPrompt = `${lessonContextPreamble}
 SUBMISSION TYPE: GitHub repository
 REPO: ${snapshot.owner}/${snapshot.repo} (default branch: ${snapshot.defaultBranch})
@@ -248,13 +248,13 @@ Grade the PDF now.`
         prompt: userPrompt,
         // Per-item feedback (≤1500 chars × N items, ~6000 tok worst case) +
         // 2000-char summary + JSON envelope. 8000 leaves headroom.
-        maxTokens: 8000,
+        maxTokens: AI_LAB_EVAL_MAX_OUTPUT_TOKENS,
         attachments,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(
-          () => reject(new Error(`Evaluator timed out after ${EVAL_TIMEOUT_MS}ms`)),
-          EVAL_TIMEOUT_MS,
+          () => reject(new Error(`Evaluator timed out after ${AI_LAB_EVAL_TIMEOUT_MS}ms`)),
+          AI_LAB_EVAL_TIMEOUT_MS,
         ),
       ),
     ])

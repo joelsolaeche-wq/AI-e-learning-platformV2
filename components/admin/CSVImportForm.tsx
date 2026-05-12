@@ -6,10 +6,9 @@ import { Button } from '@/components/ui/button'
 import { importUsersFromCSVAction, type ImportResult } from '@/lib/actions/admin.actions'
 import { cn } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Users, FileText } from 'lucide-react'
+import { EMAIL_RE } from '@/lib/constants/regex'
 
 type ParsedRow = { full_name: string; email: string; role: string }
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VALID_ROLES = ['learner', 'instructor', 'admin']
 
 function validateRow(row: ParsedRow) {
